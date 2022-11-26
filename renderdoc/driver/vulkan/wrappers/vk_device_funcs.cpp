@@ -205,6 +205,7 @@ static void StripUnwantedExtensions(rdcarray<rdcstr> &Extensions)
 RDResult WrappedVulkan::Initialise(VkInitParams &params, uint64_t sectionVersion,
                                    const ReplayOptions &opts)
 {
+  uint32_t instanceFlags = 0;
   m_InitParams = params;
   m_SectionVersion = sectionVersion;
   m_ReplayOptions = opts;
@@ -397,6 +398,16 @@ RDResult WrappedVulkan::Initialise(VkInitParams &params, uint64_t sectionVersion
     instNext = &flagsEXT;
   }
 
+  if (supportedExtensions.find(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) !=
+		  supportedExtensions.end() &&
+		!params.Extensions.contains(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME))
+  {
+	params.Extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+  }
+
+  if (params.Extensions.contains(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME))
+	instanceFlags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+
   const char **layerscstr = new const char *[params.Layers.size()];
   for(size_t i = 0; i < params.Layers.size(); i++)
     layerscstr[i] = params.Layers[i].c_str();
@@ -408,7 +419,7 @@ RDResult WrappedVulkan::Initialise(VkInitParams &params, uint64_t sectionVersion
   VkInstanceCreateInfo instinfo = {
       VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
       instNext,
-      0,
+      instanceFlags,
       &renderdocAppInfo,
       (uint32_t)params.Layers.size(),
       layerscstr,
