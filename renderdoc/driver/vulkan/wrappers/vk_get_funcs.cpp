@@ -257,6 +257,19 @@ void WrappedVulkan::vkGetPhysicalDeviceMemoryProperties(
     VkPhysicalDevice physicalDevice, VkPhysicalDeviceMemoryProperties *pMemoryProperties)
 {
   ObjDisp(physicalDevice)->GetPhysicalDeviceMemoryProperties(Unwrap(physicalDevice), pMemoryProperties);
+
+  if(IsCaptureMode(m_State))
+  {
+    // Zero out any memory types with LAZILY_ALLOCATED, because they are taken by
+    // ANGLE as a sign that TRANSIENT images can be created -- which they can't
+    // while we're capturing with RenderDoc.
+    for (uint32_t i = 0; i < pMemoryProperties->memoryTypeCount; i++)
+    {
+      if(pMemoryProperties->memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT) {
+        pMemoryProperties->memoryTypes[i].propertyFlags = 0;
+      }
+    }
+  }
 }
 
 void WrappedVulkan::vkGetImageSubresourceLayout(VkDevice device, VkImage image,
