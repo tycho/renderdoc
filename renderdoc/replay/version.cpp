@@ -38,8 +38,13 @@
 // Note the hash should be precisely 40 characters, as comes from git rev-parse.
 extern "C" const char GitVersionHash[41] = GIT_COMMIT_HASH;
 
-#if defined(WIN64)
+// On x86-32 the C name `GitVersionHash` is decorated with a leading underscore
+// in the COFF symbol table; on every other Windows arch (x64, ARM64, ARM64EC)
+// it isn't. _WIN64 is set for any 64-bit Windows target (including ARM64),
+// while the legacy WIN64 macro was only being defined manually for x64 in the
+// .vcxproj.
+#if defined(_WIN64)
 #pragma comment(linker, "/include:GitVersionHash")
-#elif defined(WIN32)
+#elif defined(_WIN32)
 #pragma comment(linker, "/include:_GitVersionHash")
 #endif

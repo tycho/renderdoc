@@ -294,7 +294,10 @@ bool VulkanReplay::CheckVulkanLayer(VulkanLayerFlags &flags, rdcarray<rdcstr> &m
   rdcstr normalPath = GetJSONPath(false);
   myJSONs.push_back(normalPath);
 
-#if ENABLED(RDOC_X64)
+// On ARM64 we don't ship an x86 secondary DLL (and Win11 ARM64 emulates x86
+// only via XTAJIT32 anyway, which is out of scope for phase 1). Only the
+// native x64 build wants to register a Wow6432Node sibling.
+#if ENABLED(RDOC_X64) && !defined(_M_ARM64) && !defined(_M_ARM64EC)
   rdcstr wow6432Path = GetJSONPath(true);
   myJSONs.push_back(wow6432Path);
 #endif
@@ -315,7 +318,10 @@ bool VulkanReplay::CheckVulkanLayer(VulkanLayerFlags &flags, rdcarray<rdcstr> &m
 
   RegCloseKey(key);
 
-#if ENABLED(RDOC_X64)
+// On ARM64 we don't ship an x86 secondary DLL (and Win11 ARM64 emulates x86
+// only via XTAJIT32 anyway, which is out of scope for phase 1). Only the
+// native x64 build wants to register a Wow6432Node sibling.
+#if ENABLED(RDOC_X64) && !defined(_M_ARM64) && !defined(_M_ARM64EC)
   {
     key = GetImplicitLayersKey(false, true);
 
@@ -368,7 +374,10 @@ void VulkanReplay::InstallVulkanLayer(bool systemLevel)
   }
 
 // if we're a 64-bit process, update the 32-bit key
-#if ENABLED(RDOC_X64)
+// On ARM64 we don't ship an x86 secondary DLL (and Win11 ARM64 emulates x86
+// only via XTAJIT32 anyway, which is out of scope for phase 1). Only the
+// native x64 build wants to register a Wow6432Node sibling.
+#if ENABLED(RDOC_X64) && !defined(_M_ARM64) && !defined(_M_ARM64EC)
   {
     key = GetImplicitLayersKey(true, true);
 

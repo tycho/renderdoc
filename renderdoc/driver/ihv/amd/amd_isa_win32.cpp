@@ -300,8 +300,10 @@ rdcstr DisassembleDXBC(const bytebuf &shaderBytes, const rdcstr &target)
 
   if(out.pShaderBinary == NULL || out.shaderBinarySize < 16)
   {
+    // HRESULT is `long` on Windows; ToStr only has a specialisation for
+     // int32_t (which is `int`), not `long`, so cast to keep the linker happy.
     RDCLOG("Failed to disassemble shader: %p/%zu (%s)", out.pShaderBinary, out.shaderBinarySize,
-           ToStr(hr).c_str());
+           ToStr((int32_t)hr).c_str());
     return "; Failed to disassemble shader";
   }
 

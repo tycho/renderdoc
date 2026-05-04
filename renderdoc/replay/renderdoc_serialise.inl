@@ -34,7 +34,9 @@
 #define ENABLED(...) 0
 #endif
 
-#if ENABLED(RDOC_WIN32) && ENABLED(RDOC_X64) && ENABLED(RDOC_DEVEL)
+// The hardcoded "expected" sizes in SIZE_CHECK() throughout this file assume
+// x64 layout. ARM64 may differ in struct padding/alignment, so disable on ARM64.
+#if ENABLED(RDOC_WIN32) && ENABLED(RDOC_X64) && ENABLED(RDOC_DEVEL) && !defined(_M_ARM64)
 template <typename T, size_t actual, size_t expected>
 class oversized
 {

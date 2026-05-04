@@ -32,7 +32,10 @@ struct ShimData
   unsigned char opts[512];
 };
 
-#ifdef WIN64
+// _WIN64 is set automatically by MSVC for any 64-bit Windows target
+// (x64, ARM64, ARM64EC) — WIN64 (no underscore) is only set manually in the
+// .vcxproj for x64. Use _WIN64 so this header works for all 64-bit targets.
+#ifdef _WIN64
 #define GLOBAL_HOOK_DATA_NAME "RenderDocGlobalHookData64"
 #define SHIM_DLL_NAME "renderdocshim64.dll"
 #else
