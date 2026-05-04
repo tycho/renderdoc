@@ -27,6 +27,7 @@
 #include <app/renderdoc_app.h>
 #include <renderdocshim.h>
 #include <windows.h>
+#include <shellapi.h>
 #include <string>
 #include <vector>
 #include "miniz/miniz.h"
@@ -893,7 +894,9 @@ public:
 };
 
 // ignore the argc/argv we get here, convert from wide to be sure we're unicode safe.
-int main(int, char *)
+// Use the proper `int, char**` signature; clang-cl rejects `int, char*` per
+// the C++ standard, while MSVC's link.exe is more permissive.
+int main(int, char **)
 {
   LPWSTR *wargv;
   int argc;

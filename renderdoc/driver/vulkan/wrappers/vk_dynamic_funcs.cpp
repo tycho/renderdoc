@@ -3708,8 +3708,15 @@ INSTANTIATE_FUNCTION_SERIALISED(void, vkCmdSetDepthBias, VkCommandBuffer command
                                 float depthBiasConstantFactor, float depthBiasClamp,
                                 float depthBiasSlopeFactor);
 
+// Use the pointer form (`const float *`) rather than the array form
+// (`const float[4]`) so the parameter type matches the template definition
+// exactly. lld-link is stricter than link.exe about template-instantiation
+// mangling — link.exe accepts the array-to-pointer decay implicitly, but lld
+// emits a slightly different mangled name for `const float *const` (the
+// post-decay type of an array parameter, which carries top-level const) vs
+// the template's plain `const float *` and then can't resolve the symbol.
 INSTANTIATE_FUNCTION_SERIALISED(void, vkCmdSetBlendConstants, VkCommandBuffer commandBuffer,
-                                const float blendConstants[4]);
+                                const float *blendConst);
 
 INSTANTIATE_FUNCTION_SERIALISED(void, vkCmdSetDepthBounds, VkCommandBuffer commandBuffer,
                                 float minDepthBounds, float maxDepthBounds);

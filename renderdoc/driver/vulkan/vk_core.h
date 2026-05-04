@@ -2034,8 +2034,13 @@ public:
                                 float depthBiasConstantFactor, float depthBiasClamp,
                                 float depthBiasSlopeFactor);
 
+  // Use `const float *` here rather than `const float[4]` so the declaration's
+  // parameter type matches the template definition exactly. lld-link is
+  // stricter than link.exe about template-instantiation mangling and treats
+  // the array form (which decays to `const float *const`) as a different
+  // signature from the pointer form (`const float *`).
   IMPLEMENT_FUNCTION_SERIALISED(void, vkCmdSetBlendConstants, VkCommandBuffer commandBuffer,
-                                const float blendConstants[4]);
+                                const float *blendConst);
 
   IMPLEMENT_FUNCTION_SERIALISED(void, vkCmdSetDepthBounds, VkCommandBuffer commandBuffer,
                                 float minDepthBounds, float maxDepthBounds);
