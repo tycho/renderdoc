@@ -112,7 +112,10 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg Network Core5Compat)
+# Core5Compat ships QTextCodec, QRegExp, QStringRef etc. as drop-in shims for
+# Qt-5 code that hasn't been ported yet. We use this to keep the bundled
+# Scintilla source compiling without surgery.
 
 # Qt6 requires C++17 minimum
 set(CMAKE_CXX_STANDARD 17)
@@ -134,6 +137,14 @@ set(CMAKE_AUTOUIC_SEARCH_PATHS
 # is a common one). Components Interpreter+Development pulls in Python3::Python
 # (the import library) and Python3_INCLUDE_DIRS.
 find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter Development)
+
+# Python.org Windows distributions ship only the release library
+# (python3xx.lib), not a debug variant (python3xx_d.lib). pyconfig.h on
+# Windows emits `#pragma comment(lib, "python313_d.lib")` when _DEBUG is set.
+# Suppress that auto-link by telling MSVC to ignore python3xx_d.lib and
+# substitute the release one. This means our Debug build links against the
+# release Python — which is fine because Debug Python ABI isn't compatible
+# anyway and most extensions ship release-only.
 
 message(STATUS "qrenderdoc: using Python ${Python3_VERSION} from ${Python3_EXECUTABLE}")
 message(STATUS "qrenderdoc: Python include dir: ${Python3_INCLUDE_DIRS}")
@@ -164,10 +175,13 @@ list(SORT QRD_INTERFACE_FILES)
 foreach(swig_in ${swig_interfaces})
     get_filename_component(swig_file ${swig_in} NAME_WE)
 
+    # On Windows LLP64, long is 32-bit even on 64-bit targets. SWIG's
+    # SWIGWORDSIZE64 mode (LP64) generates a self-check that fails on Windows;
+    # SWIGWORDSIZE32 is the correct setting since `long` matches that here.
     add_custom_command(
         OUTPUT  ${CMAKE_CURRENT_BINARY_DIR}/${swig_file}_python.cxx
                 ${CMAKE_CURRENT_BINARY_DIR}/${swig_file}.py
-        COMMAND ${BUNDLED_SWIG} -v -Wextra -Werror -DSWIGWORDSIZE64 -O -c++ -python
+        COMMAND ${BUNDLED_SWIG} -v -Wextra -Werror -DSWIGWORDSIZE32 -O -c++ -python
                 -interface ${swig_file} -modern -modernargs -enumclass
                 -fastunpack -py3 -builtin
                 -I${QRD_SRC}
@@ -369,6 +383,17 @@ target_compile_definitions(qrenderdoc PRIVATE
     MAKING_LIBRARY=1
     SCI_LEXER=1
     PYSIDE2_ENABLED=0)
+# Note on SWIG word-size:
+#   We pass -DSWIGWORDSIZE32 to SWIG (in the swig command above) because
+#   Windows LLP64 has `long == 32 bit`, which is what SWIGWORDSIZE32 actually
+#   models. The generated code's self-check `(__WORDSIZE == 64) || (LONG_MAX != INT_MAX)`
+#   then evaluates false on Windows since __WORDSIZE isn't defined here and
+#   LONG_MAX == INT_MAX. Don't define __WORDSIZE - that breaks the check.
+# Note: RENDERDOC_QT_COMPAT is intentionally NOT defined globally - it gates
+# rdcstr->QString conversion operators that need Qt headers to already be in
+# scope. The original qmake build defined it via QRDInterface.h which is
+# always included after Qt headers; replicating that scoping is fragile, so
+# we leave it to QRDInterface.h to enable per-translation-unit.
 
 # Don't apply the renderdoc-internal /FI core/precompiled.h — qrenderdoc isn't
 # in that translation unit world.
@@ -380,11 +405,31 @@ target_link_libraries(qrenderdoc PRIVATE
     Qt6::Widgets
     Qt6::Svg
     Qt6::Network
+    Qt6::Core5Compat
     Python3::Python
     user32
     shell32
     advapi32
     version)
+
+# Force-link release Python for Debug too (see comment above on pyconfig.h
+# auto-link). Convert the path to a relative-name and pass to /NODEFAULTLIB.
+get_filename_component(_python_libname ${Python3_LIBRARY_RELEASE} NAME_WE)
+target_link_options(qrenderdoc PRIVATE
+    "$<$<CONFIG:Debug>:/NODEFAULTLIB:${_python_libname}_d.lib>"
+    "$<$<CONFIG:Debug>:/DEFAULTLIB:${Python3_LIBRARY_RELEASE}>")
+
+# Force the qrenderdoc target to link against the *release* MSVC C runtime
+# (/MD) even in Debug. pyconfig.h on Windows guards Py_DEBUG-internal hooks
+# (Py_NegativeRefcount, Py_INCREF_IncRefTotal, ...) on _DEBUG, and that
+# macro is set by /MDd. Linking /MD in Debug means Python.h compiles its
+# release-API path, so we don't need a debug Python (which python.org's
+# Windows distribution doesn't ship anyway). The trade-off: the rest of
+# qrenderdoc's Debug code links against the release CRT too. That's fine
+# because we don't mix CRTs across DLL boundaries (renderdoc.dll is its
+# own thing) and any Qt build similarly defaults to release CRT.
+set_target_properties(qrenderdoc PROPERTIES
+    MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 
 # Output goes to the same per-config bin/ directory as renderdoc.dll so the
 # UI and the capture DLL sit next to each other and the loader picks up
