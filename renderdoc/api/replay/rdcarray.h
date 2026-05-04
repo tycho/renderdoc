@@ -841,6 +841,9 @@ public:
     return *this;
   }
 
+// Qt 6 made QList an alias for QVector, so the two overload sets collide.
+// Only emit the QVector overloads under Qt 5.
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
   rdcarray(const QVector<T> &in)
   {
     elems = NULL;
@@ -864,7 +867,8 @@ public:
 
     return *this;
   }
-#endif
+#endif    // QT_VERSION < 6.0.0
+#endif    // RENDERDOC_QT_COMPAT
 };
 
 // fixed size array, wrapped to be more python-friendly (mapped to an N-tuple)

@@ -1,6 +1,17 @@
 option(STATIC_QRENDERDOC "Compile qrenderdoc as static" OFF)
 option(QRENDERDOC_NO_CXX11_REGEX "Disable C++11 regex in scintilla" OFF)
 
+# On Windows we drive the qrenderdoc build entirely from CMake using Qt6,
+# bypassing the qmake path that the rest of this file constructs. The qmake
+# path expects the bundled Qt 5.9.4 / Python 3.6.4 / PySide2 binaries that
+# only exist for x86 and x64 - none of which have ARM64 builds. The native
+# CMake Qt6 path does not assume any bundled binaries, which is what we need
+# for Windows ARM64 (and as a side effect also works for x64).
+if(WIN32 AND ENABLE_QRENDERDOC)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/QRenderDocWin32.cmake)
+    return()
+endif()
+
 if( NOT DEFINED QT_QMAKE_EXECUTABLE )
     if( DEFINED QMAKE_EXECUTABLE )
         set( QT_QMAKE_EXECUTABLE "${QMAKE_EXECUTABLE}" )

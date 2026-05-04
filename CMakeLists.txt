@@ -223,16 +223,15 @@ if(APPLE)
   endif()
 endif()
 
-# Phase 1 Windows port: only Vulkan capture+replay via renderdoccmd is supported.
-# qrenderdoc UI (which needs Qt5/Qt6 + bundled Python + PySide2) and the GL/D3D
-# drivers are deferred to later phases. Force the relevant options off on Windows
-# before they are first read so the user doesn't get confusing find_package failures.
+# Windows port phasing: phase 1 only delivers renderdoc.dll + renderdoccmd.exe;
+# phase 2 brings up qrenderdoc on Qt6 + system Python; phase 4 brings up D3D
+# (which itself implies GL/GLES drivers since they share infrastructure). Force
+# the not-yet-supported things off on Windows so users don't get confusing
+# find_package failures.
 if(WIN32)
     set(ENABLE_GL OFF CACHE BOOL "" FORCE)
     set(ENABLE_GLES OFF CACHE BOOL "" FORCE)
     set(ENABLE_EGL OFF CACHE BOOL "" FORCE)
-    set(ENABLE_QRENDERDOC OFF CACHE BOOL "" FORCE)
-    set(ENABLE_PYRENDERDOC OFF CACHE BOOL "" FORCE)
     set(ENABLE_XLIB OFF CACHE BOOL "" FORCE)
     set(ENABLE_XCB OFF CACHE BOOL "" FORCE)
 endif()
@@ -554,9 +553,15 @@ if(ENABLE_QRENDERDOC OR ENABLE_PYRENDERDOC)
 
     # we also need python3-config for swig, but it's only for the examples
     # so it doesn't matter which one we find as long as we find something!
-    # Importantly it doesn't have to match the version we link against
-    if(NOT EXISTS "${PYTHON_EXECUTABLE}-config" AND NOT EXISTS "${PYTHON_EXECUTABLE}.${PYTHON_VERSION_MINOR}-config")
-        message(FATAL_ERROR "We require ${PYTHON_EXECUTABLE}-config or ${PYTHON_EXECUTABLE}.${PYTHON_VERSION_MINOR}-config to build swig, please install the python dev package for your system.")
+    # Importantly it doesn't have to match the version we link against.
+    # python3-config is a Unix-only shell script — Windows Python ships its
+    # equivalent functionality through pyconfig.h directly, and our Windows
+    # build path uses the bundled prebuilt swig.exe rather than building swig
+    # from source, so we don't need it on Windows at all.
+    if(NOT WIN32)
+        if(NOT EXISTS "${PYTHON_EXECUTABLE}-config" AND NOT EXISTS "${PYTHON_EXECUTABLE}.${PYTHON_VERSION_MINOR}-config")
+            message(FATAL_ERROR "We require ${PYTHON_EXECUTABLE}-config or ${PYTHON_EXECUTABLE}.${PYTHON_VERSION_MINOR}-config to build swig, please install the python dev package for your system.")
+        endif()
     endif()
 
     add_subdirectory(qrenderdoc)
