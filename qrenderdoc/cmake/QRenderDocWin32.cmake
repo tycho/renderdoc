@@ -412,24 +412,29 @@ target_link_libraries(qrenderdoc PRIVATE
     advapi32
     version)
 
-# Force-link release Python for Debug too (see comment above on pyconfig.h
-# auto-link). Convert the path to a relative-name and pass to /NODEFAULTLIB.
-get_filename_component(_python_libname ${Python3_LIBRARY_RELEASE} NAME_WE)
-target_link_options(qrenderdoc PRIVATE
-    "$<$<CONFIG:Debug>:/NODEFAULTLIB:${_python_libname}_d.lib>"
-    "$<$<CONFIG:Debug>:/DEFAULTLIB:${Python3_LIBRARY_RELEASE}>")
-
-# Force the qrenderdoc target to link against the *release* MSVC C runtime
-# (/MD) even in Debug. pyconfig.h on Windows guards Py_DEBUG-internal hooks
-# (Py_NegativeRefcount, Py_INCREF_IncRefTotal, ...) on _DEBUG, and that
-# macro is set by /MDd. Linking /MD in Debug means Python.h compiles its
-# release-API path, so we don't need a debug Python (which python.org's
-# Windows distribution doesn't ship anyway). The trade-off: the rest of
-# qrenderdoc's Debug code links against the release CRT too. That's fine
-# because we don't mix CRTs across DLL boundaries (renderdoc.dll is its
-# own thing) and any Qt build similarly defaults to release CRT.
-set_target_properties(qrenderdoc PROPERTIES
-    MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+# Note on the Python debug library:
+#   pyconfig.h on Windows emits `#pragma comment(lib, "python3xx_d.lib")` when
+#   _DEBUG is defined (i.e. /MDd builds). Stock python.org distributions ship
+#   only python3xx.lib, no _d variant. Two workable approaches:
+#     1. Side-by-side a copy of python3xx.lib named python3xx_d.lib so the
+#        auto-link finds *something* (the .lib content is identical for the
+#        purposes of linking against python3xx.dll).
+#     2. Force the qrenderdoc target onto the release CRT (/MD) so _DEBUG is
+#        never set when Python.h is processed.
+#
+# We previously did (2) but that mixed the release CRT in qrenderdoc.exe with
+# debug-CRT Qt6Cored.dll. When Qt-allocated objects (e.g. Scintilla widgets
+# parented through Qt, or QString internals) flow into qrenderdoc.exe destructors
+# they hit a different heap on free() - the debug CRT's heap-validation pops a
+# MessageBox, which during shutdown re-enters the Qt event loop into a slot on
+# a partially-destroyed BufferViewer, which Qt 6's assertObjectType<> turns into
+# a fatal log, which RenderDoc's logger turns into ForceCrash().
+#
+# Approach (1) is more robust. We assume the user has either copied
+# python3xx.lib -> python3xx_d.lib themselves, or runs CMake with a Python
+# distribution that includes _d.lib. The qrenderdoc target uses the same CRT
+# as its dependencies (debug Qt -> /MDd) and Python.h's auto-link finds the
+# _d variant.
 
 # Output goes to the same per-config bin/ directory as renderdoc.dll so the
 # UI and the capture DLL sit next to each other and the loader picks up
