@@ -136,9 +136,19 @@ struct VersionCommand : public Command
   virtual bool Parse(cmdline::parser &, GlobalEnvironment &) { return true; }
   virtual int Execute(const CaptureOptions &)
   {
-    std::cout << "renderdoccmd " << (sizeof(uintptr_t) == sizeof(uint64_t) ? "x64" : "x86")
-              << " v" MAJOR_MINOR_VERSION_STRING << " built from " << RENDERDOC_GetCommitHash()
-              << std::endl;
+    const char *archName =
+#if defined(_M_ARM64EC)
+        "arm64ec"
+#elif defined(_M_ARM64) || defined(__aarch64__)
+        "arm64"
+#elif defined(_M_ARM) || defined(__arm__)
+        "arm"
+#else
+        sizeof(uintptr_t) == sizeof(uint64_t) ? "x64" : "x86"
+#endif
+        ;
+    std::cout << "renderdoccmd " << archName << " v" MAJOR_MINOR_VERSION_STRING
+              << " built from " << RENDERDOC_GetCommitHash() << std::endl;
 
 #if defined(DISTRIBUTION_VERSION)
     std::cout << "Packaged for " << DISTRIBUTION_NAME << " (" << DISTRIBUTION_VERSION << ") - "
@@ -182,11 +192,21 @@ private:
   std::string cmdLine;
   std::string logFile;
   bool wait_for_exit = false;
+  uint32_t cap_frame = 0;
+  uint32_t cap_num_frames = 1;
 
 public:
   CaptureCommand() : Command() {}
   virtual void AddOptions(cmdline::parser &parser)
   {
+    parser.add<uint32_t>(
+        "cap-frame", 0,
+        "Queue a capture for the given frame number after launching. 0 disables. Implies "
+        "--wait-for-exit so the queued capture has time to fire and be flushed to disk.",
+        false, 0);
+    parser.add<uint32_t>("cap-num-frames", 0,
+                         "When --cap-frame is used, capture this many consecutive frames. Default 1.",
+                         false, 1);
     parser.set_footer("<executable> [program arguments]");
     parser.stop_at_rest(true);
   }
@@ -210,6 +230,8 @@ public:
     executable = rest[0];
     workingDir = parser.get<std::string>("working-dir");
     logFile = parser.get<std::string>("capture-file");
+    cap_frame = parser.get<uint32_t>("cap-frame");
+    cap_num_frames = parser.get<uint32_t>("cap-num-frames");
 
     for(size_t i = 1; i < rest.size(); i++)
     {
@@ -219,7 +241,7 @@ public:
       cmdLine += EscapeArgument(rest[i]);
     }
 
-    wait_for_exit = parser.exist("wait-for-exit");
+    wait_for_exit = parser.exist("wait-for-exit") || cap_frame > 0;
 
     return true;
   }
@@ -235,8 +257,13 @@ public:
 
     rdcarray<EnvironmentModification> env;
 
+    // If --cap-frame is used, we need to launch with wait_for_exit=false so we
+    // get the ident back before the process finishes; we'll connect to target
+    // control, queue the capture, then wait ourselves.
+    bool launchWait = wait_for_exit && cap_frame == 0;
+
     ExecuteResult res = RENDERDOC_ExecuteAndInject(
-        conv(executable), conv(workingDir), conv(cmdLine), env, conv(logFile), opts, wait_for_exit);
+        conv(executable), conv(workingDir), conv(cmdLine), env, conv(logFile), opts, launchWait);
 
     if(res.result.code != ResultCode::Succeeded)
     {
@@ -244,10 +271,42 @@ public:
       return (int)res.result.code;
     }
 
-    if(wait_for_exit)
+    if(launchWait)
     {
       std::cerr << "'" << executable << "' finished executing." << std::endl;
       res.ident = 0;
+    }
+    else if(cap_frame > 0)
+    {
+      // Connect to the freshly-launched target's TargetControl port and queue
+      // a capture. Useful for headless testing where there's no F12 keypress.
+      ITargetControl *tc =
+          RENDERDOC_CreateTargetControl(rdcstr(), res.ident, "renderdoccmd-cap-frame", true);
+      if(!tc)
+      {
+        std::cerr << "Failed to connect to target control on ident " << res.ident << std::endl;
+      }
+      else
+      {
+        std::cerr << "Connected to target control, queuing capture at frame " << cap_frame
+                  << " (" << cap_num_frames << " frame" << (cap_num_frames == 1 ? "" : "s") << ")"
+                  << std::endl;
+        tc->QueueCapture(cap_frame, cap_num_frames);
+
+        // Pump messages until target exits or capture is delivered. The target
+        // will close the connection when the process terminates.
+        while(tc->Connected())
+        {
+          TargetControlMessage msg = tc->ReceiveMessage(NULL);
+          if(msg.type == TargetControlMessageType::Disconnected)
+            break;
+          if(msg.type == TargetControlMessageType::NewCapture)
+          {
+            std::cerr << "Capture written: " << msg.newCapture.path.c_str() << std::endl;
+          }
+        }
+        tc->Shutdown();
+      }
     }
     else
     {
