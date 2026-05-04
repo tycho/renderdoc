@@ -7786,8 +7786,13 @@ bool WrappedVulkan::Serialise_vkCmdBeginRendering(SerialiserType &ser, VkCommand
                                                           renderstate.renderArea);
               }
             }
-            // Custom Resolve target
-            if(dynAtts[i].resolveMode & VK_RESOLVE_MODE_CUSTOM_BIT_EXT)
+            // Custom Resolve target. Defensively null-check resolveImageView -
+            // the same way line 7767 null-checks imageView - because some
+            // drivers/translation layers tolerate non-zero resolveMode with
+            // VK_NULL_HANDLE resolveImageView (a Vulkan VUID violation but
+            // not a hard error).
+            if((dynAtts[i].resolveMode & VK_RESOLVE_MODE_CUSTOM_BIT_EXT) &&
+               dynAtts[i].resolveImageView != VK_NULL_HANDLE)
             {
               const VulkanCreationInfo::ImageView &viewInfo =
                   m_CreationInfo.m_ImageView[GetResID(dynAtts[i].resolveImageView)];
@@ -8053,8 +8058,20 @@ void WrappedVulkan::vkCmdBeginRendering(VkCommandBuffer commandBuffer,
       }
 
       record->MarkImageViewFrameReferenced(viewRecord, ImageRange(), refType);
-      if(att->resolveMode)
-        record->MarkImageViewFrameReferenced(GetRecord(att->resolveImageView), ImageRange(), refType);
+
+      // Per Vulkan spec, if resolveMode != VK_RESOLVE_MODE_NONE then
+      // resolveImageView must not be VK_NULL_HANDLE. ANGLE on Windows ARM64
+      // (libGLESv2) has been observed emitting non-zero resolveMode with a
+      // NULL resolveImageView, which the validation layer would flag as a
+      // VUID violation but the driver tolerates. Defensively null-check
+      // before dereferencing - GetRecord() returns NULL for VK_NULL_HANDLE
+      // and MarkImageViewFrameReferenced isn't NULL-safe.
+      if(att->resolveMode && att->resolveImageView != VK_NULL_HANDLE)
+      {
+        VkResourceRecord *resolveRecord = GetRecord(att->resolveImageView);
+        if(resolveRecord)
+          record->MarkImageViewFrameReferenced(resolveRecord, ImageRange(), refType);
+      }
     }
   }
 }
