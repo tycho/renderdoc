@@ -12,7 +12,27 @@ else()
     add_definitions(-DPYTHON_AVAILALBE=0)
 endif()
 
-if(APPLE)
+if(WIN32)
+    list(APPEND sources
+        renderdoccmd_win32.cpp
+        renderdoccmd.rc
+        resource.h
+        targetver.h
+        ${CMAKE_SOURCE_DIR}/renderdoc/3rdparty/miniz/miniz.c)
+    list(APPEND includes PRIVATE
+        ${CMAKE_SOURCE_DIR}/renderdocshim
+        ${CMAKE_SOURCE_DIR}/renderdoc/api
+        ${CMAKE_SOURCE_DIR}/renderdoc/api/replay
+        ${CMAKE_SOURCE_DIR}/renderdoc
+        ${CMAKE_SOURCE_DIR}/renderdoc/3rdparty)
+    list(APPEND libraries
+        PRIVATE shell32
+        PRIVATE comctl32
+        PRIVATE user32
+        PRIVATE psapi
+        PRIVATE ws2_32
+        PRIVATE wininet)
+elseif(APPLE)
     list(APPEND sources renderdoccmd_apple.cpp apple/cocoa_window.mm)
 
     set_property(SOURCE renderdoccmd_apple.cpp APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-shadow")

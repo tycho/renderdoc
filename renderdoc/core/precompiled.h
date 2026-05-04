@@ -24,7 +24,15 @@
 
 #pragma once
 
+// This precompiled header is force-included via /FI on the renderdoc.dll C++
+// targets. It transitively pulls in C++-only headers (renderdoc_replay.h with
+// classes, common.h with rdcstr, etc), so when force-included into pure C
+// translation units (3rdparty/{zstd,lz4,miniz,stb,jpeg-compressor,md5,
+// tinyfiledialogs}/...) it would fail to parse. Guard so that only C++ TUs see
+// the heavy headers; C files get a no-op.
+#ifdef __cplusplus
 #include "api/app/renderdoc_app.h"
 #include "api/replay/renderdoc_replay.h"
 #include "common/common.h"
 #include "os/os_specific.h"
+#endif

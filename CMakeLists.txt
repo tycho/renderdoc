@@ -223,6 +223,20 @@ if(APPLE)
   endif()
 endif()
 
+# Phase 1 Windows port: only Vulkan capture+replay via renderdoccmd is supported.
+# qrenderdoc UI (which needs Qt5/Qt6 + bundled Python + PySide2) and the GL/D3D
+# drivers are deferred to later phases. Force the relevant options off on Windows
+# before they are first read so the user doesn't get confusing find_package failures.
+if(WIN32)
+    set(ENABLE_GL OFF CACHE BOOL "" FORCE)
+    set(ENABLE_GLES OFF CACHE BOOL "" FORCE)
+    set(ENABLE_EGL OFF CACHE BOOL "" FORCE)
+    set(ENABLE_QRENDERDOC OFF CACHE BOOL "" FORCE)
+    set(ENABLE_PYRENDERDOC OFF CACHE BOOL "" FORCE)
+    set(ENABLE_XLIB OFF CACHE BOOL "" FORCE)
+    set(ENABLE_XCB OFF CACHE BOOL "" FORCE)
+endif()
+
 if(ENABLE_ASAN)
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
     message(STATUS "Enabling address sanitizer - may cause issues if capturing, only recommended for use with replay only")
@@ -248,9 +262,6 @@ if(ENABLE_UNSUPPORTED_EXPERIMENTAL_POSSIBLY_BROKEN_WAYLAND)
     endif()
 endif()
 
-if(WIN32)
-    message(FATAL_ERROR "CMake is not needed on Windows, just open and build renderdoc.sln")
-endif()
 
 message(STATUS "Calculating version")
 
@@ -383,7 +394,7 @@ else ()
     set (CMAKE_CXX_STANDARD_REQUIRED ON)
 endif ()
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+if((CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang") AND NOT MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-strict-aliasing")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden -fvisibility-inlines-hidden")
 
@@ -467,6 +478,44 @@ if(ANDROID)
     add_definitions(-DRENDERDOC_PLATFORM_ANDROID)
 elseif(APPLE)
     add_definitions(-DRENDERDOC_PLATFORM_APPLE)
+elseif(WIN32)
+    add_definitions(-DRENDERDOC_PLATFORM_WIN32)
+    # Match the vcxproj's <CharacterSet>Unicode</CharacterSet> behavior so
+    # ambiguous Win32 API names like STARTUPINFO map to STARTUPINFOW.
+    add_definitions(-DUNICODE -D_UNICODE)
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_DEPRECATE)
+    # WIN32_LEAN_AND_MEAN and NOMINMAX are also defined in win32_specific.h
+    # but we need them globally for code that doesn't include that header.
+    # Use -D...=1 form so the in-header `#define WIN32_LEAN_AND_MEAN` doesn't
+    # warn about redefinition (matches numeric value).
+    add_definitions(-DWIN32_LEAN_AND_MEAN -DNOMINMAX)
+
+    if(MSVC)
+        # Treat as warnings, not errors, while we're porting
+        add_compile_options(/W3 /MP /Zc:inline /Zc:rvalueCast /Zc:wchar_t /utf-8 /bigobj)
+        add_compile_options(/wd4005 /wd4267 /wd4244 /wd4018 /wd4996 /wd4146 /wd4334)
+
+        # Clang-cl bridges warning flags but accepts MSVC-style options too.
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            add_compile_options(-Wno-microsoft-include -Wno-deprecated-declarations
+                                -Wno-pragma-pack -Wno-nonportable-include-path
+                                -Wno-unused-function -Wno-unused-variable
+                                -Wno-unused-parameter -Wno-missing-field-initializers
+                                -Wno-reorder-ctor -Wno-switch -Wno-tautological-constant-out-of-range-compare
+                                -Wno-shift-count-overflow -Wno-format
+                                -Wno-c++11-narrowing -Wno-microsoft-cast
+                                -Wno-deprecated-copy -Wno-unused-but-set-variable
+                                -Wno-unused-private-field -Wno-implicit-int-conversion
+                                -Wno-string-plus-int -Wno-microsoft-include
+                                -Wno-microsoft-template -Wno-extern-c-compat
+                                -Wno-self-assign-overloaded -Wno-cast-function-type-mismatch
+                                -Wno-int-conversion -Wno-ignored-qualifiers
+                                -Wno-unreachable-code-break -Wno-shadow
+                                -Wno-shorten-64-to-32 -Wno-unused-lambda-capture
+                                -Wno-attributes -Wno-implicit-fallthrough
+                                -Wno-unknown-warning-option -Wno-unknown-attributes)
+        endif()
+    endif()
 elseif(UNIX)
     add_definitions(-DRENDERDOC_PLATFORM_LINUX)
 

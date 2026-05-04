@@ -34,3 +34,7 @@ set(include_dirs
 add_library(rdoc_nv OBJECT ${sources} ${sources_gl} ${sources_vulkan})
 target_compile_definitions(rdoc_nv ${RDOC_DEFINITIONS})
 target_include_directories(rdoc_nv ${include_dirs})
+
+if(MSVC)
+    rdoc_apply_precompiled_header_fi(rdoc_nv)
+endif()

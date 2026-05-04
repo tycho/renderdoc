@@ -7,6 +7,24 @@ set(RDOC_INCLUDES
     PRIVATE ${RDOC_SOURCE_DIR}/3rdparty)
 set(RDOC_LIBRARIES)
 
+if(MSVC)
+    # The vcxproj build uses ForcedIncludeFiles=precompiled.h on every C++
+    # source for the renderdoc.dll project. Mirror that with a helper that
+    # callers can apply per-target. Don't apply globally because 3rdparty
+    # subprojects (notably glslang in driver/shaders/spirv) use their own
+    # macros (DELIBERATE_FALLTHROUGH, MAYBE_UNUSED) that conflict.
+    function(rdoc_apply_precompiled_header_fi tgt)
+        # SHELL: prefix prevents CMake from recognising /FI and translating it
+        # to the project-level <ForcedIncludeFiles> element (which would lose
+        # the COMPILE_LANGUAGE filter). Forcing it through AdditionalOptions
+        # keeps the per-file CXX scoping intact so 3rdparty .c files (zstd,
+        # lz4, miniz, stb, jpeg, tinyfiledialogs, md5) don't pull in C++-only
+        # headers.
+        target_compile_options(${tgt} PRIVATE
+            "$<$<COMPILE_LANGUAGE:CXX>:SHELL:/FI ${RDOC_SOURCE_DIR}/core/precompiled.h>")
+    endfunction()
+endif()
+
 option(ENABLE_DLSYM_HOOKING "Enable dlsym() hooking via glibc internals" OFF)
 
 if(ENABLE_DLSYM_HOOKING)
@@ -14,7 +32,17 @@ if(ENABLE_DLSYM_HOOKING)
     message(WARNING "Enabling dlsym() hooking - may cause issues, segfaults, crashes, or bad behaviour. Only enable if absolutely required")
 endif()
 
-if(ANDROID)
+if(WIN32)
+    list(APPEND RDOC_LIBRARIES
+        PRIVATE ws2_32
+        PRIVATE kernel32
+        PRIVATE user32
+        PRIVATE shlwapi
+        PRIVATE setupapi
+        PRIVATE version
+        PRIVATE iphlpapi
+        PRIVATE psapi)
+elseif(ANDROID)
     list(APPEND RDOC_LIBRARIES
         PRIVATE -lm
         PRIVATE -ldl
@@ -290,7 +318,21 @@ set(sources
     3rdparty/tinyfiledialogs/tinyfiledialogs.c
     3rdparty/tinyfiledialogs/tinyfiledialogs.h)
 
-if(ANDROID)
+if(WIN32)
+    list(APPEND sources
+        os/win32/dia2_stubs.h
+        os/win32/win32_specific.h
+        os/win32/sys_win32_hooks.cpp
+        os/win32/win32_callstack.cpp
+        os/win32/win32_hook.cpp
+        os/win32/win32_network.cpp
+        os/win32/win32_process.cpp
+        os/win32/win32_shellext.cpp
+        os/win32/win32_stringio.cpp
+        os/win32/win32_threading.cpp
+        data/resource.h
+        data/renderdoc.rc)
+elseif(ANDROID)
     list(APPEND sources
         data/embedded_files.h
         os/posix/android/android_stringio.cpp
@@ -367,14 +409,16 @@ if(NOT ANDROID)
         3rdparty/compressonator/BC6_Encode_kernel.cpp
         3rdparty/compressonator/BC7_Encode_Kernel.cpp)
 
-    set_source_files_properties(3rdparty/compressonator/BC1_Encode_kernel.cpp
-        3rdparty/compressonator/BC2_Encode_kernel.cpp
-        3rdparty/compressonator/BC3_Encode_kernel.cpp
-        3rdparty/compressonator/BC4_Encode_kernel.cpp
-        3rdparty/compressonator/BC5_Encode_kernel.cpp
-        3rdparty/compressonator/BC6_Encode_kernel.cpp
-        3rdparty/compressonator/BC7_Encode_Kernel.cpp
-        PROPERTIES COMPILE_FLAGS "-D_LINUX -Wno-newline-eof -Wno-missing-braces -Wno-char-subscripts -Wno-sign-compare -Wno-unused-value -Wno-strict-aliasing -Wno-shift-negative-value -Wno-implicit-fallthrough")
+    if(NOT MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set_source_files_properties(3rdparty/compressonator/BC1_Encode_kernel.cpp
+            3rdparty/compressonator/BC2_Encode_kernel.cpp
+            3rdparty/compressonator/BC3_Encode_kernel.cpp
+            3rdparty/compressonator/BC4_Encode_kernel.cpp
+            3rdparty/compressonator/BC5_Encode_kernel.cpp
+            3rdparty/compressonator/BC6_Encode_kernel.cpp
+            3rdparty/compressonator/BC7_Encode_Kernel.cpp
+            PROPERTIES COMPILE_FLAGS "-D_LINUX -Wno-newline-eof -Wno-missing-braces -Wno-char-subscripts -Wno-sign-compare -Wno-unused-value -Wno-strict-aliasing -Wno-shift-negative-value -Wno-implicit-fallthrough")
+    endif()
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX)
@@ -600,6 +644,10 @@ add_library(rdoc OBJECT ${sources})
 target_compile_definitions(rdoc ${RDOC_DEFINITIONS})
 target_include_directories(rdoc ${RDOC_INCLUDES})
 
+if(MSVC)
+    rdoc_apply_precompiled_header_fi(rdoc)
+endif()
+
 list(APPEND renderdoc_objects
     $<TARGET_OBJECTS:rdoc>
     ${data_objects})
@@ -614,7 +662,11 @@ list(APPEND renderdoc_objects
 # static objects are constructed. We guarantee this happens after even
 # any other static libraries that we link by making it its own static
 # library and appending it to the end of the link list.
-add_library(renderdoc_libentry STATIC os/posix/posix_libentry.cpp)
+if(WIN32)
+    add_library(renderdoc_libentry STATIC os/win32/win32_libentry.cpp)
+else()
+    add_library(renderdoc_libentry STATIC os/posix/posix_libentry.cpp)
+endif()
 target_compile_definitions(renderdoc_libentry ${RDOC_DEFINITIONS})
 target_include_directories(renderdoc_libentry ${RDOC_INCLUDES})
 link_directories(${CMAKE_CURRENT_BINARY_DIR})
@@ -623,6 +675,11 @@ link_directories(${CMAKE_CURRENT_BINARY_DIR})
 # it gets applied too early (even if the -lrenderdoc_libentry is later)
 if(APPLE)
     list(APPEND RDOC_LIBRARIES PRIVATE "-Wl,-force_load,$<TARGET_FILE:renderdoc_libentry>")
+elseif(WIN32)
+    # MSVC doesn't have an equivalent of --force-load, but DllMain in win32_libentry.cpp
+    # is referenced by the linker automatically since it's the DLL entry point. Add the
+    # static library normally; the linker will pull in the object containing DllMain.
+    list(APPEND RDOC_LIBRARIES PRIVATE renderdoc_libentry)
 else()
     list(APPEND RDOC_LIBRARIES PRIVATE -lrenderdoc_libentry)
 endif()
@@ -633,6 +690,29 @@ target_include_directories(renderdoc ${RDOC_INCLUDES})
 target_link_libraries(renderdoc ${RDOC_LIBRARIES})
 
 add_dependencies(renderdoc renderdoc_libentry)
+
+if(WIN32)
+    # Use the COM export definition file from the original vcxproj build.
+    # Also force-link the renderdoc_libentry static library: without
+    # /WHOLEARCHIVE, the linker only pulls in objects whose symbols are
+    # explicitly referenced. Our DllMain is the entry point's user hook (called
+    # by _DllMainCRTStartup) but the CRT's reference to "DllMain" is satisfied
+    # by a default no-op stub, so our object is silently dropped and the layer
+    # gets the no-op DllMain — meaning RenderDoc::Initialise() never runs and
+    # subsequent Threading::SetTLSValue calls crash.
+    set_target_properties(renderdoc PROPERTIES LINK_FLAGS
+        "/DEF:\"${CMAKE_CURRENT_SOURCE_DIR}/os/win32/comexport.def\" /WHOLEARCHIVE:renderdoc_libentry.lib")
+
+    # Drop the templated layer JSON next to renderdoc.dll for the active config
+    # so the loader (and `renderdoccmd vulkanlayer --register`) can find it.
+    if(ENABLE_VULKAN)
+        add_custom_command(TARGET renderdoc POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${CMAKE_CURRENT_BINARY_DIR}/driver/vulkan/${RDOC_BASE_NAME}.json
+                $<TARGET_FILE_DIR:renderdoc>/${RDOC_BASE_NAME}.json
+            VERBATIM)
+    endif()
+endif()
 
 if(UNIX AND NOT ANDROID AND NOT APPLE)
     set(RDOC_LINK_FLAGS "-Wl,--undefined,force_include_libentry -Wl,--version-script,${CMAKE_CURRENT_SOURCE_DIR}/${RDOC_BASE_NAME}.version")

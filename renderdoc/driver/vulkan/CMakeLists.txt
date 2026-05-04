@@ -90,7 +90,26 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-shadow -Wno-shorten-64-to-32")
 endif()
 
-if(ANDROID)
+if(WIN32)
+    list(APPEND sources vk_win32.cpp)
+    add_definitions(-DVK_USE_PLATFORM_WIN32_KHR)
+
+    set(VULKAN_LAYER_NAME "VK_LAYER_${RDOC_BASE_NAME_UPPER}_Capture")
+    set(VULKAN_ENABLE_VAR "ENABLE_VULKAN_${RDOC_BASE_NAME_UPPER}_CAPTURE")
+
+    # The Vulkan loader resolves library_path relative to the JSON's own
+    # directory, so a relative ".\renderdoc.dll" works regardless of where the
+    # build output ends up. The JSON itself needs to be placed next to the DLL
+    # so the registry path can point at both. Configure a templated copy and
+    # then drop it next to renderdoc.dll via a per-config post-build step
+    # (the templated copy is configured into a fixed source-time directory; the
+    # per-config copy uses $<TARGET_FILE_DIR:renderdoc> to land in the right
+    # Debug/Release folder for multi-config generators).
+    set(VULKAN_LAYER_MODULE_PATH ".\\\\${RDOC_BASE_NAME}.dll")
+    set(json_in ${CMAKE_CURRENT_SOURCE_DIR}/renderdoc.json)
+    set(json_configured ${CMAKE_CURRENT_BINARY_DIR}/${RDOC_BASE_NAME}.json)
+    configure_file(${json_in} ${json_configured} @ONLY)
+elseif(ANDROID)
     list(APPEND sources vk_posix.cpp vk_android.cpp vk_layer_android.cpp)
     list(APPEND definitions PRIVATE -DVK_USE_PLATFORM_ANDROID_KHR)
 elseif(APPLE)
@@ -129,3 +148,7 @@ endif()
 add_library(rdoc_vulkan OBJECT ${sources})
 target_compile_definitions(rdoc_vulkan ${definitions})
 target_include_directories(rdoc_vulkan ${RDOC_INCLUDES})
+
+if(MSVC)
+    rdoc_apply_precompiled_header_fi(rdoc_vulkan)
+endif()
