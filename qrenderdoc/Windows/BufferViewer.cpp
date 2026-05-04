@@ -296,7 +296,12 @@ public:
   {
     CameraWrapper::MouseWheel(e);
 
-    float mod = (1.0f - e->delta() / 2500.0f);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    int wheelDelta = e->angleDelta().y();
+#else
+    int wheelDelta = e->delta();
+#endif
+    float mod = (1.0f - wheelDelta / 2500.0f);
 
     SetDistance(qMax(1e-6f, m_Distance * mod));
   }
@@ -497,7 +502,7 @@ struct BufferData
 {
   BufferData()
   {
-    refcount.store(1);
+    refcount.storeRelaxed(1);
     stride = 0;
   }
 
@@ -959,7 +964,7 @@ public:
   Qt::ItemFlags flags(const QModelIndex &index) const override
   {
     if(!index.isValid())
-      return 0;
+      return Qt::NoItemFlags;
 
     return QAbstractItemModel::flags(index);
   }
@@ -1001,7 +1006,12 @@ public:
     {
       if(role == Qt::SizeHintRole)
       {
-        QStyleOptionViewItem opt = view->viewOptions();
+        QStyleOptionViewItem opt;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        view->initViewItemOption(&opt);
+#else
+        opt = view->viewOptions();
+#endif
         opt.features |= QStyleOptionViewItem::HasDisplay;
 
         // pad these columns to allow for sufficiently wide data
@@ -5567,7 +5577,7 @@ void BufferViewer::updateLabelsAndLayout()
     }
     else
     {
-      setWindowTitle(m_Ctx.GetResourceName(m_BufferID) + lit(" - Contents"));
+      setWindowTitle((QString)m_Ctx.GetResourceName(m_BufferID) + lit(" - Contents"));
     }
   }
 }

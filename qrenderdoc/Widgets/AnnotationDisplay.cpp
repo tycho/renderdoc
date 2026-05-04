@@ -50,7 +50,10 @@ AnnotationDisplay::AnnotationDisplay(ICaptureContext &ctx, bool standalone, QWid
 
   QVBoxLayout *layout = new QVBoxLayout(this);
   layout->setSpacing(0);
-  layout->setMargin(m_Standalone ? 3 : 0);
+  {
+    int m = m_Standalone ? 3 : 0;
+    layout->setContentsMargins(m, m, m, m);
+  }
 
   layout->addWidget(m_Tree);
 

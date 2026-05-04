@@ -26,8 +26,11 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QContextMenuEvent>
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 #include <QDesktopWidget>
+#endif
 #include <QHeaderView>
+#include <QScreen>
 #include <QLabel>
 #include <QMenu>
 #include <QMouseEvent>
@@ -154,7 +157,7 @@ void RDTipLabel::paintEvent(QPaintEvent *ev)
 {
   QStylePainter p(this);
   QStyleOptionFrame opt;
-  opt.init(this);
+  opt.initFrom(this);
   p.drawPrimitive(QStyle::PE_PanelTipLabel, opt);
   p.end();
 
@@ -191,7 +194,7 @@ void RDTipLabel::resizeEvent(QResizeEvent *e)
 {
   QStyleHintReturnMask frameMask;
   QStyleOption option;
-  option.init(this);
+  option.initFrom(this);
   if(style()->styleHint(QStyle::SH_ToolTip_Mask, &option, this, &frameMask))
     setMask(frameMask.region);
 
@@ -262,7 +265,14 @@ void RDTreeView::mouseMoveEvent(QMouseEvent *e)
 
           // estimate, as this is not easily queryable
           const QPoint cursorSize(16, 16);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+          QScreen *screen = QGuiApplication::screenAt(p);
+          if(!screen)
+            screen = QGuiApplication::primaryScreen();
+          const QRect screenAvailGeom = screen ? screen->availableGeometry() : QRect();
+#else
           const QRect screenAvailGeom = QApplication::desktop()->availableGeometry(p);
+#endif
 
           // start with the tooltip placed bottom-right of the cursor, as the default
           QRect tooltipRect;
@@ -291,7 +301,11 @@ void RDTreeView::mouseMoveEvent(QMouseEvent *e)
 void RDTreeView::wheelEvent(QWheelEvent *e)
 {
   QTreeView::wheelEvent(e);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  m_currentHoverIndex = indexAt(e->position().toPoint());
+#else
   m_currentHoverIndex = indexAt(e->pos());
+#endif
 }
 
 void RDTreeView::leaveEvent(QEvent *e)
@@ -811,7 +825,12 @@ void RDTreeView::drawBranches(QPainter *painter, const QRect &rect, const QModel
     if(model()->rowCount(index) == 0)
       return;
 
-    QStyleOptionViewItem branchopt = viewOptions();
+    QStyleOptionViewItem branchopt;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    initViewItemOption(&branchopt);
+#else
+    branchopt = viewOptions();
+#endif
 
     branchopt.rect = primitive;
 

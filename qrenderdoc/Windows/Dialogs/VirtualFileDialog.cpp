@@ -27,7 +27,11 @@
 #include <QKeyEvent>
 #include <QPainter>
 #include <QPushButton>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QRegularExpression>
+#else
 #include <QRegExp>
+#endif
 #include <QSortFilterProxyModel>
 #include "Code/ReplayManager.h"
 #include "Code/Resources.h"
@@ -436,14 +440,14 @@ private:
     // iterate through subdirs but stop before a root
     while(parent && parent->parent)
     {
-      ret = parent->file.filename + sep + ret;
+      ret = (QString)parent->file.filename + sep + ret;
       parent = parent->parent;
     }
 
     if(parent)
     {
       // parent is now a root
-      ret = parent->file.filename + ret;
+      ret = (QString)parent->file.filename + ret;
     }
     ret.replace(QLatin1Char('/'), sep);
     return ret;
@@ -794,8 +798,15 @@ void VirtualFileDialog::on_filename_keyPress(QKeyEvent *e)
 
   QString text = ui->filename->text();
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  // Qt6: QRegExp is gone. Wildcard-to-regex conversion is now an explicit
+  // helper that emits a regular regex pattern.
+  QRegularExpression re(QRegularExpression::wildcardToRegularExpression(text),
+                        QRegularExpression::CaseInsensitiveOption);
+#else
   QRegExp re(text);
   re.setPatternSyntax(QRegExp::Wildcard);
+#endif
 
   int fileCount = m_FileProxy->rowCount(curDir);
   int matches = 0, dirmatches = 0;
@@ -809,7 +820,11 @@ void VirtualFileDialog::on_filename_keyPress(QKeyEvent *e)
 
     QString filename = m_FileProxy->data(file, RemoteFileModel::FileNameRole).toString();
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    if(re.match(filename).hasMatch())
+#else
     if(re.exactMatch(filename))
+#endif
     {
       idx = file;
       dirmatches += isDir ? 1 : 0;
@@ -846,7 +861,11 @@ void VirtualFileDialog::on_filename_keyPress(QKeyEvent *e)
     fileNotFound(text);
   }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  m_FileProxy->setFilterRegularExpression(re);
+#else
   m_FileProxy->setFilterRegExp(re);
+#endif
   m_FileProxy->refresh();
 }
 
@@ -867,7 +886,7 @@ void VirtualFileDialog::on_buttonBox_accepted()
   }
 
   // simulate enter being pressed
-  QKeyEvent fakeEvent(QEvent::KeyPress, Qt::Key_Return, 0);
+  QKeyEvent fakeEvent(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
   on_filename_keyPress(&fakeEvent);
 }
 

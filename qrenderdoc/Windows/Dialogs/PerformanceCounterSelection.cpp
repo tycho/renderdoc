@@ -452,7 +452,11 @@ void PerformanceCounterSelection::Load()
         selectedCounters.insert(m_UuidToCounter[uuid]);
       }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+      SetSelectedCounters(selectedCounters.values());
+#else
       SetSelectedCounters(selectedCounters.toList());
+#endif
     }
     else
     {

@@ -163,7 +163,13 @@ void RDLabel::leaveEvent(QEvent *event)
 
 void RDLabel::resizeEvent(QResizeEvent *event)
 {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  // Qt 6: QLabel::pixmap() now returns QPixmap by value (used to be const QPixmap *).
+  const QPixmap localPixmap = pixmap();
+  const QPixmap *p = localPixmap.isNull() ? nullptr : &localPixmap;
+#else
   const QPixmap *p = pixmap();
+#endif
   if(m_preserveRatio && p)
   {
     QRect r = rect();

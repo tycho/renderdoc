@@ -63,7 +63,7 @@ public:
   Qt::ItemFlags flags(const QModelIndex &index) const override
   {
     if(!index.isValid())
-      return 0;
+      return Qt::NoItemFlags;
 
     return QAbstractItemModel::flags(index);
   }
@@ -198,7 +198,14 @@ protected:
 
   bool lessThan(const QModelIndex &left, const QModelIndex &right) const override
   {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    // Qt 6 removed QVariant::operator<; use QVariant::compare instead.
+    return QVariant::compare(sourceModel()->data(left, SortDataRole),
+                             sourceModel()->data(right, SortDataRole)) ==
+           QPartialOrdering::Less;
+#else
     return sourceModel()->data(left, SortDataRole) < sourceModel()->data(right, SortDataRole);
+#endif
   }
 
 private:

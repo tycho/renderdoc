@@ -702,7 +702,7 @@ QString PythonContext::LoadExtension(ICaptureContext &ctx, const rdcstr &extensi
 
       PyObject *keys = PyDict_Keys(sysmodules);
 
-      QString search = extension + lit(".");
+      QString search = (QString)extension + lit(".");
 
       if(keys)
       {

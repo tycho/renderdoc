@@ -1664,7 +1664,7 @@ ParsedFormat BufferFormatter::ParseFormatString(const QString &formatString, uin
         }
       }
 
-      el.type.name = ToStr(el.type.baseType) + vecMatSizeSuffix;
+      el.type.name = ToStr(el.type.baseType) + rdcstr(vecMatSizeSuffix);
 
       // process packing annotations first, so we have that information to validate e.g. [[unorm]]
       for(const Annotation &annot : annotations)
@@ -2595,7 +2595,7 @@ QString BufferFormatter::GetBufferFormatString(Packing::Rules pack, ResourceId s
           format += QString::number(desc.columns);
 
         if(!desc.name.empty())
-          format += lit(" ") + desc.name;
+          format += lit(" ") + (QString)desc.name;
 
         if(desc.elements > 1)
           format += QFormatStr("[%1]").arg(desc.elements);

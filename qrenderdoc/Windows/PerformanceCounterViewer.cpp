@@ -122,7 +122,7 @@ public:
   Qt::ItemFlags flags(const QModelIndex &index) const override
   {
     if(!index.isValid())
-      return 0;
+      return Qt::NoItemFlags;
 
     return QAbstractItemModel::flags(index);
   }
@@ -152,7 +152,7 @@ public:
 
         case CounterUnit::Hertz: unit = lit("Hz"); break;
         case CounterUnit::Volt: unit = lit("V"); break;
-        case CounterUnit::Celsius: unit = lit("Â°C"); break;
+        case CounterUnit::Celsius: unit = lit("Ã‚Â°C"); break;
       }
 
       if(unit.isNull())
@@ -272,7 +272,13 @@ protected:
 
   bool lessThan(const QModelIndex &left, const QModelIndex &right) const override
   {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    return QVariant::compare(sourceModel()->data(left, SortDataRole),
+                             sourceModel()->data(right, SortDataRole)) ==
+           QPartialOrdering::Less;
+#else
     return sourceModel()->data(left, SortDataRole) < sourceModel()->data(right, SortDataRole);
+#endif
   }
 
 private:

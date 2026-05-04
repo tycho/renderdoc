@@ -74,7 +74,7 @@ public:
   Qt::ItemFlags flags(const QModelIndex &index) const override
   {
     if(!index.isValid())
-      return 0;
+      return Qt::NoItemFlags;
 
     return QAbstractItemModel::flags(index);
   }
@@ -464,7 +464,7 @@ void ResourceInspector::RevealParameter(SDObject *param)
         if(current->GetChild(i) == next)
         {
           current = next;
-          item = parent.child((int)i, 0);
+          item = parent.model() ? parent.model()->index((int)i, 0, parent) : QModelIndex();
           break;
         }
       }
@@ -746,7 +746,7 @@ void ResourceInspector::resourceUsage_contextMenu(const QPoint &pos)
   RDDialog::show(&contextMenu, ui->resourceUsage->viewport()->mapToGlobal(pos));
 }
 
-void ResourceInspector::enterEvent(QEvent *event)
+void ResourceInspector::enterEvent(QEnterEvent *event)
 {
   HighlightUsage();
 }

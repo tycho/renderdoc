@@ -364,7 +364,7 @@ void CaptureDialog::vulkanLayerWarn_mouseClick()
       msg += tr("Conflicting manifest:\n\n");
 
     for(const rdcstr &j : info.otherJSONs)
-      msg += j + lit("\n");
+      msg += (QString)j + lit("\n");
 
     RDDialog::critical(this, tr("Unfixable vulkan layer configuration"), msg);
     return;

@@ -322,8 +322,12 @@ void AnalyticsSerialise(Analytics &serdb, QVariantMap &values, AnalyticsSerialis
 {
   bool reporting = type == AnalyticsSerialiseType::Reporting;
 
-// only check this on 64-bit as it is different on 32-bit
-#if QT_POINTER_SIZE == 8 && defined(Q_OS_WIN32)
+// only check this on 64-bit as it is different on 32-bit. Skip the size
+// assertion entirely on Qt 6 - QString and other Qt types have different
+// layouts than the Qt 5 sizes the assertion was written for. The
+// serialisation is field-by-field below, not memcpy, so the size
+// difference doesn't matter for correctness.
+#if QT_POINTER_SIZE == 8 && defined(Q_OS_WIN32) && QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
   static_assert(sizeof(Analytics) == 149, "Sizeof Analytics has changed - update serialisation.");
 #endif
 

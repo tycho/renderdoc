@@ -199,7 +199,12 @@ void UpdateDialog::on_update_clicked()
     });
 
     QObject::connect(
-        m_Request, OverloadedSlot<QNetworkReply::NetworkError>::of(&QNetworkReply::error),
+        m_Request,
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        &QNetworkReply::errorOccurred,
+#else
+        OverloadedSlot<QNetworkReply::NetworkError>::of(&QNetworkReply::error),
+#endif
         [this](QNetworkReply::NetworkError err) {
           ui->progressBar->setValue(0);
           ui->progressText->setText(tr("Network error:\n%1").arg(m_Request->errorString()));

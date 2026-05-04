@@ -308,7 +308,7 @@ ShaderViewer::ShaderViewer(ICaptureContext &ctx, QWidget *parent)
 
     QVBoxLayout *framelayout = new QVBoxLayout(m_DisassemblyFrame);
     framelayout->setSpacing(0);
-    framelayout->setMargin(0);
+    framelayout->setContentsMargins(0, 0, 0, 0);
     framelayout->addWidget(m_DisassemblyToolbar);
     framelayout->addWidget(m_DisassemblyView);
 

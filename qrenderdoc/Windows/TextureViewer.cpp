@@ -705,7 +705,7 @@ TextureViewer::~TextureViewer()
   delete ui;
 }
 
-void TextureViewer::enterEvent(QEvent *event)
+void TextureViewer::enterEvent(QEnterEvent *event)
 {
   HighlightUsage();
 }
@@ -1222,7 +1222,7 @@ void TextureViewer::UI_UpdateTextureDetails()
     ui->renderContainer->setWindowTitle(title);
   }
 
-  ui->texStatusName->setText(m_Ctx.GetResourceName(current.resourceId) + lit(" - "));
+  ui->texStatusName->setText((QString)m_Ctx.GetResourceName(current.resourceId) + lit(" - "));
 
   status = QString();
 
@@ -2421,7 +2421,7 @@ void TextureViewer::InitResourcePreview(ResourcePreview *prev, Descriptor res, b
     {
       if(!fullname.isEmpty())
         fullname += lit(" = ");
-      fullname += m_Ctx.GetResourceName(res.resource);
+      fullname += (QString)m_Ctx.GetResourceName(res.resource);
     }
     if(fullname.isEmpty())
       fullname = m_Ctx.GetResourceName(res.resource);
@@ -2634,13 +2634,19 @@ void TextureViewer::thumb_clicked(QMouseEvent *e)
 
 void TextureViewer::render_mouseWheel(QWheelEvent *e)
 {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  QPoint cursorPos = e->position().toPoint();
+  int wheelDelta = e->angleDelta().y();
+#else
   QPoint cursorPos = e->pos();
+  int wheelDelta = e->delta();
+#endif
 
   setFitToWindow(false);
 
   // scroll in logarithmic scale
   double logScale = logf(m_TexDisplay.scale);
-  logScale += e->delta() / 2500.0;
+  logScale += wheelDelta / 2500.0;
   UI_SetScale((float)expf(logScale), cursorPos.x() * ui->render->devicePixelRatioF(),
               cursorPos.y() * ui->render->devicePixelRatioF());
 
@@ -2652,9 +2658,17 @@ void TextureViewer::render_mouseMove(QMouseEvent *e)
   if(m_Output == NULL)
     return;
 
-  m_CurHoverPixel.setX(int((float(e->x() * ui->render->devicePixelRatioF()) - m_TexDisplay.xOffset) /
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  const QPointF mousePos = e->position();
+  const float mouseX = float(mousePos.x());
+  const float mouseY = float(mousePos.y());
+#else
+  const float mouseX = float(e->x());
+  const float mouseY = float(e->y());
+#endif
+  m_CurHoverPixel.setX(int((mouseX * ui->render->devicePixelRatioF() - m_TexDisplay.xOffset) /
                            m_TexDisplay.scale));
-  m_CurHoverPixel.setY(int((float(e->y() * ui->render->devicePixelRatioF()) - m_TexDisplay.yOffset) /
+  m_CurHoverPixel.setY(int((mouseY * ui->render->devicePixelRatioF() - m_TexDisplay.yOffset) /
                            m_TexDisplay.scale));
 
   if(m_TexDisplay.resourceId != ResourceId())
@@ -3217,7 +3231,7 @@ void TextureViewer::OnEventChanged(uint32_t eventId)
     QString bindName = (copy || clear) ? tr("Destination") : QString();
     QString slotName = (copy || clear)
                            ? tr("DST")
-                           : QString(m_Ctx.CurPipelineState().OutputAbbrev() + QString::number(rt));
+                           : QString((QString)m_Ctx.CurPipelineState().OutputAbbrev() + QString::number(rt));
 
     InitResourcePreview(prev, RTs[rt], false, follow, bindName, slotName);
   }

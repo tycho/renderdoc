@@ -428,7 +428,14 @@ void TimelineBar::mouseMoveEvent(QMouseEvent *e)
 
 void TimelineBar::wheelEvent(QWheelEvent *e)
 {
-  float mod = (1.0 + e->delta() / 2500.0f);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  const int wheelDelta = e->angleDelta().y();
+  const qreal mouseX = e->position().x();
+#else
+  const int wheelDelta = e->delta();
+  const qreal mouseX = e->x();
+#endif
+  float mod = (1.0 + wheelDelta / 2500.0f);
 
   qreal prevZoom = m_zoom;
 
@@ -439,9 +446,9 @@ void TimelineBar::wheelEvent(QWheelEvent *e)
   // adjust the pan so that it's still in bounds, and so the zoom acts centred on the mouse
   qreal newPan = m_pan;
 
-  newPan -= (e->x() - m_eidAxisRect.left());
+  newPan -= (mouseX - m_eidAxisRect.left());
   newPan = newPan * zoomDelta;
-  newPan += (e->x() - m_eidAxisRect.left());
+  newPan += (mouseX - m_eidAxisRect.left());
 
   m_pan = qBound(-m_dataArea.width() * (m_zoom - 1.0), newPan, 0.0);
 

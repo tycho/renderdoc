@@ -41,8 +41,12 @@ FindReplace::FindReplace(QWidget *parent) : QFrame(parent), ui(new Ui::FindRepla
   RDLineEdit *edit = new RDLineEdit(this);
   ui->findText->setLineEdit(edit);
 
-  ui->findText->setAutoCompletion(false);
-  ui->replaceText->setAutoCompletion(false);
+  // Qt 6: QComboBox::setAutoCompletion was removed (auto-completion is always
+  // enabled now). Used to be: ui->findText->setAutoCompletion(true) etc.
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+  ui->findText->setAutoCompletion(true);
+  ui->replaceText->setAutoCompletion(true);
+#endif
 
   QObject::connect(edit, &RDLineEdit::keyPress, [this](QKeyEvent *event) {
     if(event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)

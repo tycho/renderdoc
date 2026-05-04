@@ -148,7 +148,7 @@ public:
   Qt::ItemFlags flags(const QModelIndex &index) const override
   {
     if(!index.isValid())
-      return 0;
+      return Qt::NoItemFlags;
 
     return QAbstractItemModel::flags(index);
   }
@@ -740,7 +740,7 @@ void PixelHistoryView::disableTimelineHighlight()
     m_Ctx.GetTimelineBar()->HighlightHistory(ResourceId(), {});
 }
 
-void PixelHistoryView::enterEvent(QEvent *event)
+void PixelHistoryView::enterEvent(QEnterEvent *event)
 {
   enableTimelineHighlight();
 }

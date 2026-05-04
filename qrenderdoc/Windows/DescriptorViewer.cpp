@@ -434,7 +434,7 @@ public:
   Qt::ItemFlags flags(const QModelIndex &index) const override
   {
     if(!index.isValid())
-      return 0;
+      return Qt::NoItemFlags;
 
     return QAbstractItemModel::flags(index);
   }
@@ -1289,7 +1289,16 @@ DescriptorViewer::DescriptorViewer(ICaptureContext &ctx, QWidget *parent)
     if(!registered)
     {
       registered = true;
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
       QMetaType::registerComparators<ButtonTag>();
+#else
+      // Qt6: registerComparators is gone. With Qt6 we'd register a
+      // QMetaType::CompareDataFn via QMetaType::registerConverter or use
+      // a QSortFilterProxyModel with a custom lessThan() instead. This
+      // sort path is non-critical (just controls column sort order in the
+      // descriptor view), so leave unregistered for the ARM64 phase-2 build
+      // and revisit when porting upstream wants to land Qt6 support.
+#endif
     }
   }
 

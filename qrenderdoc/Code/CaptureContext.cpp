@@ -488,7 +488,9 @@ rdcstr CaptureContext::LoadExtension(rdcstr name)
   for(QAction *a : m_MainWindow->GetMenuActions())
     CleanMenu(a);
 
-  m_RegisteredMenuItems.removeAll(NULL);
+  // Qt 6 QList::removeAll requires the argument to be implicitly convertible
+  // to T. NULL/0 doesn't convert to QPointer<RegisteredMenuItem>.
+  m_RegisteredMenuItems.removeAll(QPointer<RegisteredMenuItem>());
 
   return ret;
 }
