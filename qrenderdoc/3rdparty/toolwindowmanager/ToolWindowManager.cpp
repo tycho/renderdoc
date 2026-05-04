@@ -70,7 +70,7 @@ ToolWindowManager::ToolWindowManager(QWidget *parent) : QWidget(parent)
   m_hoverArea = NULL;
 
   QPalette pal = palette();
-  pal.setColor(QPalette::Background, pal.color(QPalette::Highlight));
+  pal.setColor(QPalette::Window, pal.color(QPalette::Highlight));
 
   m_previewOverlay = new QWidget(NULL);
   m_previewOverlay->setAutoFillBackground(true);

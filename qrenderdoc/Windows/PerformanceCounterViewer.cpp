@@ -136,7 +136,7 @@ public:
 
       const CounterDescription &cd = m_Descriptions[section - 1];
 
-      QString unit = QString::null;
+      QString unit = QString();
       switch(cd.unit)
       {
         case CounterUnit::Bytes: unit = lit("bytes"); break;
@@ -152,7 +152,7 @@ public:
 
         case CounterUnit::Hertz: unit = lit("Hz"); break;
         case CounterUnit::Volt: unit = lit("V"); break;
-        case CounterUnit::Celsius: unit = lit("°C"); break;
+        case CounterUnit::Celsius: unit = lit("Â°C"); break;
       }
 
       if(unit.isNull())

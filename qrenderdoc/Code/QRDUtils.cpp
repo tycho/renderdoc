@@ -2516,7 +2516,7 @@ QString RDDialog::getExistingDirectory(QWidget *parent, const QString &caption, 
 {
   QFileDialog fd(parent, caption, dir, QString());
   fd.setAcceptMode(QFileDialog::AcceptOpen);
-  fd.setFileMode(QFileDialog::DirectoryOnly);
+  fd.setFileMode(QFileDialog::Directory);
   fd.setOptions(options);
   show(&fd);
 
@@ -3504,6 +3504,12 @@ QColor contrastingColor(const QColor &col, const QColor &defaultCol)
 //
 // Unfortunately we need this for Wayland, so we only ever use it when we are absolutely forced to
 // because we're running under the Wayland Qt platform.
+//
+// Confine to Wayland builds: outside of Wayland the redeclaration of a Qt
+// internal class with Q_OBJECT trips AUTOMOC into trying to moc the .cpp
+// without an accompanying #include "QRDUtils.moc", and in any case the
+// re-declaration is gratuitous when nothing calls AccessWaylandPlatformInterface.
+#if defined(RENDERDOC_WINDOWING_WAYLAND)
 class QOpenGLContext;
 
 class Q_GUI_EXPORT QPlatformNativeInterface : public QObject
@@ -3521,6 +3527,7 @@ void *AccessWaylandPlatformInterface(const QByteArray &resource, QWindow *window
   QPlatformNativeInterface *native = QGuiApplication::platformNativeInterface();
   return native->nativeResourceForWindow(resource, window);
 }
+#endif
 
 // Default Qt doesn't do this in release Qt builds, which is all we use
 #if defined(Q_OS_WIN32)
@@ -4007,3 +4014,9 @@ void QRClickToolButton::mousePressEvent(QMouseEvent *e)
   else
     QToolButton::mousePressEvent(e);
 }
+
+// AUTOMOC needs an explicit include of the moc output for any Q_OBJECT in a
+// .cpp (the qmake build did this implicitly via the qmake-generated .moc
+// chains). The Q_OBJECT in question is gated behind RENDERDOC_WINDOWING_WAYLAND
+// but AUTOMOC scans the source file textually before the preprocessor runs.
+#include "QRDUtils.moc"

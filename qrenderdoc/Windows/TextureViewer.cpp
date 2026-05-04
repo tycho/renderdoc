@@ -984,7 +984,7 @@ void TextureViewer::UI_UpdateStatusText()
   {
     QPalette Pal(palette());
 
-    Pal.setColor(QPalette::Background, swatchColor);
+    Pal.setColor(QPalette::Window, swatchColor);
 
     ui->pickSwatch->setAutoFillBackground(true);
     ui->pickSwatch->setPalette(Pal);
@@ -3012,7 +3012,7 @@ void TextureViewer::Reset()
   {
     QPalette Pal(palette());
 
-    Pal.setColor(QPalette::Background, Qt::black);
+    Pal.setColor(QPalette::Window, Qt::black);
 
     ui->pickSwatch->setAutoFillBackground(true);
     ui->pickSwatch->setPalette(Pal);
