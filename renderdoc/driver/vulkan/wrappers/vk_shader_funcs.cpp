@@ -743,8 +743,15 @@ bool WrappedVulkan::Serialise_vkCreateGraphicsPipelines(
 
     VkRenderPass origRP = CreateInfo.renderPass;
     uint64_t createFlags = GetPipelineCreateFlags(&CreateInfo);
-    // if we have pipeline executable properties, capture the data
-    if(GetExtensions(NULL).ext_KHR_pipeline_executable_properties)
+    // if we have pipeline executable properties, capture the data - but only
+    // for full executable pipelines, not partial pipeline libraries (GPL).
+    // Adreno on Windows ARM64 has been observed returning VK_ERROR_UNKNOWN
+    // when these flags are set on a non-shader GPL library (vertex input +
+    // fragment output interface combo with stages=0). Per the spec, querying
+    // executable properties on a library that hasn't been linked into a
+    // complete pipeline is meaningless anyway, so just skip.
+    if(GetExtensions(NULL).ext_KHR_pipeline_executable_properties &&
+       !(createFlags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR))
     {
       createFlags |= (VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR |
                       VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR);
@@ -1112,8 +1119,11 @@ bool WrappedVulkan::Serialise_vkCreateComputePipelines(SerialiserType &ser, VkDe
   {
     VkPipeline pipe = VK_NULL_HANDLE;
     uint64_t createFlags = GetPipelineCreateFlags(&CreateInfo);
-    // if we have pipeline executable properties, capture the data
-    if(GetExtensions(NULL).ext_KHR_pipeline_executable_properties)
+    // if we have pipeline executable properties, capture the data - but skip
+    // for partial pipeline libraries (see same comment in the graphics
+    // pipeline path above).
+    if(GetExtensions(NULL).ext_KHR_pipeline_executable_properties &&
+       !(createFlags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR))
     {
       createFlags |= (VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR |
                       VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR);
