@@ -1,3 +1,88 @@
+# =====================================================================
+# WIP STATUS — phase 2 of the Windows ARM64 port.
+# =====================================================================
+#
+# Configure works. Build does not yet succeed: the qrenderdoc source assumes
+# Qt 5 APIs that are removed in Qt 6, and converting all of them is a
+# substantial port (multiple dozen sites) that hasn't been done yet.
+#
+# Already-applied mechanical renames (committed):
+#   Qt::MidButton, QString::Skip/KeepEmptyParts, QString::null,
+#   QPalette::Foreground/Background, QFileDialog::DirectoryOnly,
+#   QStyle::PE_IndicatorViewItemCheck, Qt::ImMicroFocus.
+#
+# Remaining Qt 5 -> Qt 6 work (sketch — actual fix in source needed):
+#
+#   Removed includes:
+#     <QDesktopWidget>     - use QGuiApplication::screenAt() / QScreen
+#     <QRegExp>            - use <QRegularExpression>
+#     <QTextCodec>         - use <QStringConverter> (Qt 6.0+) or QStringDecoder
+#                            / QStringEncoder
+#
+#   Event handler signature changes (header changes too):
+#     enterEvent(QEvent *)    -> enterEvent(QEnterEvent *)
+#     wheelEvent QWheelEvent::delta()/x()/y()/pos()/orientation()
+#                             -> angleDelta(), position(), pixelDelta()
+#
+#   Removed/replaced APIs:
+#     QTime::start(), QTime::elapsed()  -> QElapsedTimer
+#     QLayout::setMargin(N)             -> setContentsMargins(N, N, N, N)
+#     QFontMetrics::width()             -> horizontalAdvance()
+#     QComboBox::setAutoCompletion()    -> remove (always on now)
+#     QModelIndex::child(r, c)          -> idx.model()->index(r, c, idx)
+#     QSet::toList()                    -> QList<T>(set.begin(), set.end())
+#     QStyleOption::init(widget)        -> initFrom(widget)
+#     QTableView::viewOptions()         -> initViewItemOption(QStyleOptionViewItem*)
+#     QMetaType::registerComparators<T>() -> not portable; either remove
+#                                            (only used for sorting) or fall
+#                                            back to a manual comparator
+#     QAtomicInteger<T>::store(v)       -> storeRelaxed(v)
+#     QString::midRef                   -> QStringView::mid or QString::mid
+#     QPalette::foreground (the function, lowercase)
+#                                       -> use ::brush(QPalette::WindowText)
+#     Qt::AA_X11InitThreads             -> remove (Qt 6 always enabled)
+#     QStandardPaths::HomeLocation case label
+#                                       -> uses an enum that's no longer constexpr
+#                                          in switch contexts; rewrite as if/else
+#                                          chain
+#     QPair<...> implicit + concatenation -> use std::pair / explicit conversion
+#
+#   Scintilla version mismatch:
+#     The bundled qrenderdoc/3rdparty/scintilla appears to be built against an
+#     older Scintilla API; ScintillaBase::ButtonDown(2 args) and similar fail
+#     against the source files included. Either update Scintilla or write
+#     compatibility shims at the call sites.
+#
+#   SWIG bindings:
+#     The bundled swig.exe regenerates fine under XTAJIT32, but the SWIG output
+#     contains "#error SWIG wrapped code invalid in 32 bit architecture" because
+#     SWIG hasn't been told this is a 64-bit build. Pass -DSWIGWORDSIZE64 to
+#     swig.exe (already done in the swig command above, but worth verifying it
+#     reaches all paths once a real build is attempted).
+#
+#   Static analysis:
+#     QFlags<T> is much stricter about implicit int conversions. Several places
+#     return `int` where `QFlags<Qt::ItemFlag>` is expected; must use the named
+#     enum value or explicit construction.
+#
+# Recommended next steps when picking this up:
+#   1. Add the trivial mechanical renames first (setMargin, MidButton in any
+#      remaining sites, QSet::toList, etc).
+#   2. Fix the enterEvent signature in PixelHistoryView, ResourceInspector,
+#      TextureViewer (header + cpp).
+#   3. Convert QTime::start/elapsed sites to QElapsedTimer.
+#   4. Wholesale port QWheelEvent users to the position()/angleDelta() API.
+#   5. Replace QDesktopWidget, QRegExp, QTextCodec with their Qt 6 equivalents.
+#   6. Audit Scintilla — likely the simplest fix is to drop in the matching
+#      Scintilla version that ScintillaEditBase.cpp expects (look at the
+#      function signatures it calls into).
+#   7. Iterate on the remaining errors until qrenderdoc.exe links.
+#
+# Until then, the working ARM64 phase 1 deliverable is renderdoccmd.exe; UI
+# users should keep using the existing x64 qrenderdoc.exe (it can replay
+# captures from any architecture, just not capture from ARM64 victims).
+# =====================================================================
+
 # Native Qt6 CMake build for qrenderdoc on Windows.
 #
 # This file replaces the qmake-driven path in qrenderdoc/CMakeLists.txt for
