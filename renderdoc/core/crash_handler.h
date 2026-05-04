@@ -24,7 +24,14 @@
  ******************************************************************************/
 
 // currently breakpad crash-handler is only available on windows
-#if ENABLED(RDOC_RELEASE) && ENABLED(RDOC_WIN32) && RENDERDOC_OFFICIAL_BUILD
+//
+// Phase 1 Windows ARM64 port: the crash handler in upstream RenderDoc submits
+// minidumps to Baldur Karlsson's crash-report server. He has explicitly
+// declined to support Windows ARM, so any dumps sent from an ARM64 build are
+// pure noise to him. Hard-disable the crash handler on ARM64 / ARM64EC so we
+// can never accidentally ship a build that phones home.
+#if ENABLED(RDOC_RELEASE) && ENABLED(RDOC_WIN32) && RENDERDOC_OFFICIAL_BUILD && \
+    !defined(_M_ARM64) && !defined(_M_ARM64EC)
 
 #define RDOC_CRASH_HANDLER OPTION_ON
 

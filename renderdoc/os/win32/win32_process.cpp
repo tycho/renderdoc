@@ -721,6 +721,43 @@ rdcpair<RDResult, uint32_t> Process::InjectIntoProcess(uint32_t pid,
 
   // if the target process is 'wow64' that means it's 32-bit.
   capalt = (isWow64 == TRUE);
+
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+  // On Windows ARM64, IsWow64Process only flags x86-on-x64 wow64 (which doesn't
+  // apply to us). To detect a victim that's actually running under x64 emulation
+  // on ARM64, use IsWow64Process2 (Win10 1709+) and check processMachine.
+  // For phase 1 we only support same-arch ARM64->ARM64 capture, so we treat any
+  // mismatched-arch victim as incompatible rather than trying to farm off.
+  using PFN_IsWow64Process2 = BOOL(WINAPI *)(HANDLE, USHORT *, USHORT *);
+  HMODULE k32 = GetModuleHandleW(L"kernel32.dll");
+  PFN_IsWow64Process2 pIsWow64Process2 =
+      k32 ? (PFN_IsWow64Process2)GetProcAddress(k32, "IsWow64Process2") : NULL;
+  if(pIsWow64Process2)
+  {
+    USHORT processMachine = IMAGE_FILE_MACHINE_UNKNOWN;
+    USHORT nativeMachine = IMAGE_FILE_MACHINE_UNKNOWN;
+    if(pIsWow64Process2(hProcess, &processMachine, &nativeMachine))
+    {
+      // processMachine == IMAGE_FILE_MACHINE_UNKNOWN means "running natively"
+      // on the host arch. Anything else means emulated. We're an ARM64 build so
+      // we can only inject into native ARM64 victims in phase 1; reject the
+      // x64-emulated case explicitly with a clear error rather than crashing
+      // later trying to inject the wrong-arch DLL.
+      if(processMachine != IMAGE_FILE_MACHINE_UNKNOWN &&
+         processMachine != IMAGE_FILE_MACHINE_ARM64)
+      {
+        CloseHandle(hProcess);
+        RDResult result;
+        SET_ERROR_RESULT(result, ResultCode::IncompatibleProcess,
+                         "Cannot capture an emulated process (machine 0x%04x) from the native "
+                         "ARM64 build of RenderDoc. Phase 1 supports ARM64-on-ARM64 only; "
+                         "x64-emulated victims need an ARM64X build (planned phase 3).",
+                         (unsigned)processMachine);
+        return {result, 0};
+      }
+    }
+  }
+#endif
 #endif
 
   if(capalt)
