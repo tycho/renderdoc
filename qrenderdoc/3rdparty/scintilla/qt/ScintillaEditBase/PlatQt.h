@@ -17,6 +17,14 @@
 #include <QPainter>
 #include <QHash>
 
+// Qt 6: QTextCodec moved to Qt6Core5Compat and is no longer transitively
+// included by the basic Qt modules. Forward-declare it here so the pointer
+// member below compiles without forcing every consumer to include the
+// (potentially-Core5Compat-gated) heavy header.
+QT_BEGIN_NAMESPACE
+class QTextCodec;
+QT_END_NAMESPACE
+
 #ifdef SCI_NAMESPACE
 namespace Scintilla {
 #endif

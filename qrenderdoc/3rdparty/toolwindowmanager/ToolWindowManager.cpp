@@ -25,7 +25,9 @@
 #include "ToolWindowManager.h"
 #include <QApplication>
 #include <QDebug>
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 #include <QDesktopWidget>
+#endif
 #include <QDrag>
 #include <QEvent>
 #include <QMetaMethod>
@@ -664,7 +666,7 @@ void ToolWindowManager::restoreState(const QVariantMap &dataMap)
     wrapper->show();
     if(wrapper->windowState() & Qt::WindowMaximized)
     {
-      wrapper->setWindowState(0);
+      wrapper->setWindowState(Qt::WindowStates());
       wrapper->setWindowState(Qt::WindowMaximized);
     }
   }
@@ -1350,7 +1352,7 @@ void ToolWindowManager::drawHotspotPixmaps()
     QPainter p(&m_pixmaps[ref]);
     p.setCompositionMode(QPainter::CompositionMode_Source);
     p.setRenderHint(QPainter::Antialiasing);
-    p.setRenderHint(QPainter::HighQualityAntialiasing);
+    p.setRenderHint(QPainter::Antialiasing);
 
     QRectF rect(0, 0, m_dropHotspotDimension, m_dropHotspotDimension);
 

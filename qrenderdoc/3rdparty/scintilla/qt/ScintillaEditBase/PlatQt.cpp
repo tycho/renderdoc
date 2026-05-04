@@ -29,7 +29,11 @@
 #include <QListWidget>
 #include <QVarLengthArray>
 #include <QScrollBar>
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 #include <QDesktopWidget>
+#endif
+#include <QGuiApplication>
+#include <QScreen>
 #include <QTextLayout>
 #include <QTextLine>
 #include <QLibrary>
@@ -330,7 +334,13 @@ void SurfaceImpl::RoundedRectangle(PRectangle rc,
 {
 	PenColour(fore);
 	BrushColour(back);
-	GetPainter()->drawRoundRect(QRectFFromPRect(rc));
+	// Qt 6 dropped drawRoundRect (which used percentage radii). drawRoundedRect
+	// takes pixel radii; use 25% of the smaller side as a near-equivalent.
+	{
+		QRectF rect = QRectFFromPRect(rc);
+		qreal radius = qMin(rect.width(), rect.height()) * 0.25;
+		GetPainter()->drawRoundedRect(rect, radius, radius);
+	}
 }
 
 void SurfaceImpl::AlphaRectangle(PRectangle rc,
@@ -510,13 +520,13 @@ XYPOSITION SurfaceImpl::WidthText(Font &font, const char *s, int len)
 	QFontMetricsF metrics(*FontPointer(font), device);
 	SetCodec(font);
 	QString string = codec->toUnicode(s, len);
-	return metrics.width(string);
+	return metrics.horizontalAdvance(string);
 }
 
 XYPOSITION SurfaceImpl::WidthChar(Font &font, char ch)
 {
 	QFontMetricsF metrics(*FontPointer(font), device);
-	return metrics.width(QChar::fromLatin1(ch));
+	return metrics.horizontalAdvance(QChar::fromLatin1(ch));
 }
 
 XYPOSITION SurfaceImpl::Ascent(Font &font)
@@ -651,8 +661,14 @@ void Window::SetPositionRelative(PRectangle rc, Window relativeTo)
 	ox += rc.left;
 	oy += rc.top;
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+	QScreen *screen = QGuiApplication::screenAt(QPoint(ox, oy));
+	if (!screen) screen = QGuiApplication::primaryScreen();
+	QRect rectDesk = screen ? screen->availableGeometry() : QRect();
+#else
 	QDesktopWidget *desktop = QApplication::desktop();
 	QRect rectDesk = desktop->availableGeometry(QPoint(ox, oy));
+#endif
 	/* do some corrections to fit into screen */
 	int sizex = rc.right - rc.left;
 	int sizey = rc.bottom - rc.top;
@@ -738,8 +754,14 @@ PRectangle Window::GetMonitorRect(Point pt)
 {
 	QPoint originGlobal = window(wid)->mapToGlobal(QPoint(0, 0));
 	QPoint posGlobal = window(wid)->mapToGlobal(QPoint(pt.x, pt.y));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+	QScreen *screen = QGuiApplication::screenAt(posGlobal);
+	if (!screen) screen = QGuiApplication::primaryScreen();
+	QRect rectScreen = screen ? screen->availableGeometry() : QRect();
+#else
 	QDesktopWidget *desktop = QApplication::desktop();
 	QRect rectScreen = desktop->availableGeometry(posGlobal);
+#endif
 	rectScreen.translate(-originGlobal.x(), -originGlobal.y());
 	return PRectangle(rectScreen.left(), rectScreen.top(),
 	        rectScreen.right(), rectScreen.bottom());
@@ -790,7 +812,11 @@ public:
 
 protected:
 	virtual void mouseDoubleClickEvent(QMouseEvent *event);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+	void initViewItemOption(QStyleOptionViewItem *option) const override;
+#else
 	virtual QStyleOptionViewItem viewOptions() const;
+#endif
 
 private:
 	CallBackAction doubleClickAction;
@@ -1078,12 +1104,20 @@ void ListWidget::mouseDoubleClickEvent(QMouseEvent * /* event */)
 	}
 }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+void ListWidget::initViewItemOption(QStyleOptionViewItem *option) const
+{
+	QListWidget::initViewItemOption(option);
+	option->state |= QStyle::State_Active;
+}
+#else
 QStyleOptionViewItem ListWidget::viewOptions() const
 {
 	QStyleOptionViewItem result = QListWidget::viewOptions();
 	result.state |= QStyle::State_Active;
 	return result;
 }
+#endif
 
 //----------------------------------------------------------------------
 

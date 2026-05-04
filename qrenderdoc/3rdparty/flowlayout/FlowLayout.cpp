@@ -115,7 +115,7 @@ QLayoutItem *FlowLayout::takeAt(int index)
 
 Qt::Orientations FlowLayout::expandingDirections() const
 {
-    return 0;
+    return Qt::Orientations();
 }
 
 bool FlowLayout::hasHeightForWidth() const
@@ -160,7 +160,12 @@ QSize FlowLayout::minimumSize() const
     foreach (item, itemList)
         size = size.expandedTo(item->minimumSize());
 
-    size += QSize(2*margin(), 2*margin());
+    // Qt 6 removed QLayout::margin(); query the contents margins instead.
+    {
+        int l, t, r, b;
+        getContentsMargins(&l, &t, &r, &b);
+        size += QSize(l + r, t + b);
+    }
 
     if(!m_prevRect.isEmpty())
     {
