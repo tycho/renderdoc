@@ -33,6 +33,7 @@
 void RENDERDOC_OutOfMemory(uint64_t sz);
 #endif
 
+
 class rdcinflexiblestr;
 
 // special type for storing literals. This allows functions to force callers to pass them literals
@@ -895,24 +896,32 @@ public:
     append(arr.data(), (size_t)arr.size());
     return *this;
   }
+  // Under Qt 6, the rdcstr+QString and QString+QString (via operator QString())
+  // candidates become equally-ranked and trigger C2666. Drop the rdcstr-returning
+  // overloads so the QString path (after operator QString()) is unambiguously
+  // picked. Callers that need rdcstr can construct one explicitly.
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
   rdcstr operator+(const QString &str) const
   {
     rdcstr ret = *this;
     ret += str;
     return ret;
   }
+#endif
   rdcstr &operator+=(const QChar &chr)
   {
     QByteArray arr = QString(chr).toUtf8();
     append(arr.data(), (size_t)arr.size());
     return *this;
   }
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
   rdcstr operator+(const QChar &chr) const
   {
     rdcstr ret = *this;
     ret += QString(chr);
     return ret;
   }
+#endif
 #endif
 };
 
@@ -936,6 +945,15 @@ inline bool operator!=(const char *const left, const rdcstr &right)
 }
 
 #if defined(RENDERDOC_QT_COMPAT)
+// Note: in Qt 6 the ambiguity between this free `operator+(QString, rdcstr) -> rdcstr`
+// and `QString::operator+(QString)` (after the implicit `operator QString()` on rdcstr)
+// became a hard error. Both overloads were exact matches in Qt 5 / Qt 6 — Qt 6's
+// overload resolution is just stricter about treating the implicit conversions
+// as equally-good candidates. Wrap behind a "use the QString-returning fallback"
+// gate so Qt 6 builds can rely on QString's own operators (which work after the
+// implicit `operator QString()` conversion). Returning QString rather than rdcstr
+// is fine because rdcstr's converting constructor accepts QString.
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 inline rdcstr operator+(const QString &left, const rdcstr &right)
 {
   return rdcstr(left) += right;
@@ -945,6 +963,7 @@ inline rdcstr operator+(const QChar &left, const rdcstr &right)
 {
   return rdcstr(left) += right;
 }
+#endif
 #endif
 
 // this class generally should not be used directly. You almost always want rdcstr (or rarely
@@ -1186,5 +1205,20 @@ struct hash<rdcstr>
 {
   std::size_t operator()(const rdcstr &s) const { return strhash(s.c_str()); }
 };
+}
+#endif
+
+// And a qHash overload so rdcstr can be used as a key in QSet / QHash. Qt 6's
+// QHash hard-asserts on key types that have no qHash overload. Detect Qt via
+// QT_VERSION rather than RENDERDOC_QT_COMPAT - the latter is set per-TU after
+// Qt is included and we'd miss this declaration on the first include of
+// rdcstr.h. Detect QtCore being present by looking for QT_VERSION_STR (set by
+// any Qt header that's been included before this point), and provide qHash
+// only then.
+#if defined(QT_VERSION) && QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
+#include <QtCore/qhashfunctions.h>
+inline size_t qHash(const rdcstr &s, size_t seed = 0) noexcept
+{
+  return qHashBits(s.c_str(), s.size(), seed);
 }
 #endif
