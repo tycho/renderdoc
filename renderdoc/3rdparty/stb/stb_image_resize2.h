@@ -370,7 +370,10 @@ typedef uint64_t stbir_uint64;
 #endif
 #endif 
 
-#if defined(_x86_64) || defined( __x86_64__ ) || defined( _M_X64 ) || defined(__x86_64) || defined(_M_AMD64) || defined(__SSE2__) || defined(STBIR_SSE) || defined(STBIR_SSE2)
+/* ARM64EC defines _M_X64 / _M_AMD64 for x64 source compatibility but cannot emit SSE
+ * instructions and the SSE intrinsic headers refuse direct inclusion on that target.
+ * Skip the SSE2 path on ARM64EC; falls through to the scalar implementation. */
+#if (defined(_x86_64) || defined( __x86_64__ ) || defined( _M_X64 ) || defined(__x86_64) || defined(_M_AMD64) || defined(__SSE2__) || defined(STBIR_SSE) || defined(STBIR_SSE2)) && !defined(_M_ARM64EC)
   #ifndef STBIR_SSE2
     #define STBIR_SSE2
   #endif
