@@ -367,6 +367,16 @@ public:
   // hit the case where it's necessary (doing 'whole pass' partial replay of a subsection of a
   // command buffer where we need to apply dynamic state from earlier in the command buffer).
   bool QualcommLineWidthDynamicStateCrash() const { return qualcommLineWidthCrash; }
+  // On Qualcomm Windows ARM64, the post-VS pipeline (a synthesised compute shader patched from the
+  // captured vertex shader) hangs the GPU on dispatch and causes a device-lost. Skip post-VS
+  // generation entirely on this driver - the Mesh Viewer will report "no data" but the rest of the
+  // UI remains usable.
+  bool QualcommBrokenPostVS() const { return qualcommBrokenPostVS; }
+  // On Qualcomm Windows ARM64, recreating a linked GPL pipeline (stageCount=0, composed of
+  // pre-built libraries) sometimes returns VK_ERROR_UNKNOWN. This makes the entire capture-open
+  // intermittently fail. Tolerate the failure - the replay limps with a NULL pipeline handle for
+  // that resource, which is still better than refusing to open the capture.
+  bool QualcommBrokenLinkedGPLPipeline() const { return qualcommBrokenLinkedGPL; }
   // on Intel, occlusion queries are broken unless the shader has some effects. When we don't want
   // it to have visible effects during pixel history we have to insert some manual side-effects
   bool IntelBrokenOcclusionQueries() const { return intelBrokenOcclusionQueries; }
@@ -402,6 +412,8 @@ private:
   bool qualcommLeakingUBOOffsets = false;
   bool qualcommDrefNon2DCompileCrash = false;
   bool qualcommLineWidthCrash = false;
+  bool qualcommBrokenPostVS = false;
+  bool qualcommBrokenLinkedGPL = false;
   bool intelBrokenOcclusionQueries = false;
   bool nvidiaStaticPipelineRebindStates = false;
   bool maliBrokenASDeviceSerialisation = false;

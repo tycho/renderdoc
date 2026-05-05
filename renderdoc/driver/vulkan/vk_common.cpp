@@ -1443,6 +1443,13 @@ VkDriverInfo::VkDriverInfo(const VkPhysicalDeviceProperties &physProps,
     qualcommDrefNon2DCompileCrash = true;
     qualcommLineWidthCrash = true;
 
+#if defined(_M_ARM64) || defined(__aarch64__)
+    // Qualcomm Adreno on Windows ARM64 (X-series): post-VS synthesised compute shader hangs GPU,
+    // and re-creating linked GPL pipelines is flaky (returns VK_ERROR_UNKNOWN intermittently).
+    qualcommBrokenPostVS = true;
+    qualcommBrokenLinkedGPL = true;
+#endif
+
     // KHR_buffer_device_address has been tested on 622 (Quest2)
     // UBO dynamic offset leak has been fixed in early 2020, 622 tested.
     if(physProps.driverVersion < VK_MAKE_VERSION(512, 622, 0))
