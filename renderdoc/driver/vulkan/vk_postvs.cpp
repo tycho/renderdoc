@@ -175,10 +175,14 @@ static void ConvertToMeshOutputCompute(const ShaderReflection &refl, const SPIRV
       {
         editor.Remove(it);
       }
-      // same with flat/noperspective/centroid
+      // same with flat/noperspective/centroid/sample - all four interpolation
+      // decorations are only valid on Input/Output, so they must go when we
+      // relocate variables to Private storage for the synthesised compute shader.
+      // Missing Sample here produced invalid SPIR-V that hung the GPU on Adreno.
       else if(decorate.decoration == rdcspv::Decoration::Flat ||
               decorate.decoration == rdcspv::Decoration::NoPerspective ||
-              decorate.decoration == rdcspv::Decoration::Centroid)
+              decorate.decoration == rdcspv::Decoration::Centroid ||
+              decorate.decoration == rdcspv::Decoration::Sample)
       {
         editor.Remove(it);
       }
