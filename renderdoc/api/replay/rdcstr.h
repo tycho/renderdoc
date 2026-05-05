@@ -1215,10 +1215,12 @@ struct hash<rdcstr>
 // rdcstr.h. Detect QtCore being present by looking for QT_VERSION_STR (set by
 // any Qt header that's been included before this point), and provide qHash
 // only then.
-#if defined(QT_VERSION) && QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
+#if defined(QT_VERSION) && defined(QT_VERSION_CHECK)
+#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
 #include <QtCore/qhashfunctions.h>
 inline size_t qHash(const rdcstr &s, size_t seed = 0) noexcept
 {
   return qHashBits(s.c_str(), s.size(), seed);
 }
+#endif
 #endif
