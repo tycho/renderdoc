@@ -1444,10 +1444,23 @@ VkDriverInfo::VkDriverInfo(const VkPhysicalDeviceProperties &physProps,
     qualcommLineWidthCrash = true;
 
 #if defined(_M_ARM64) || defined(__aarch64__)
-    // Qualcomm Adreno on Windows ARM64 (X-series): post-VS synthesised compute shader hangs GPU,
-    // and re-creating linked GPL pipelines is flaky (returns VK_ERROR_UNKNOWN intermittently).
-    qualcommBrokenPostVS = true;
+    // Qualcomm Adreno on Windows ARM64 (X-series).
+    //
+    // Re-creating linked GPL pipelines (stageCount=0, composed of pre-built libraries) is
+    // flaky on this driver - CreateGraphicsPipelines returns VK_ERROR_UNKNOWN intermittently
+    // for the link step. The companion tolerance lives in vk_shader_funcs.cpp; the flag here
+    // is for explicit gating by callers that need to know about it.
     qualcommBrokenLinkedGPL = true;
+
+    // The post-VS / shader-feedback / shader-debug paths emit BDA-via-uvec2-bitcast access
+    // for vertex / output buffers in synthesised compute shaders. spirv-val accepts the
+    // resulting SPIR-V, but the X-class ARM64 driver hangs the GPU on dispatch (verified by
+    // dumping the SPIR-V, validating it as clean, then comparing the BDA and Descriptor
+    // builds: BDA hangs, Descriptor works). Force RenderDoc's internal shader storage paths
+    // to fall back to Descriptor mode by setting the existing bdaBrokenDriver flag. The
+    // upstream version-gated workaround (driverVersion < 512.622.0) does not cover this
+    // X-class driver - it reports much higher versions but has its own BDA-in-compute bug.
+    bdaBrokenDriver = true;
 #endif
 
     // KHR_buffer_device_address has been tested on 622 (Quest2)
