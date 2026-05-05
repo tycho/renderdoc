@@ -54,6 +54,25 @@ static RDResult DeferredPipelineCompile(VkDevice device, VkPipelineCache pipelin
 
   if(ret != VK_SUCCESS)
   {
+    RDCERR("Pipeline create failed: flags=0x%x stages=%u layout=%p renderPass=%p subpass=%u",
+           createInfo.flags, createInfo.stageCount, (void *)createInfo.layout,
+           (void *)createInfo.renderPass, createInfo.subpass);
+
+#if defined(_M_ARM64) || defined(__aarch64__)
+    // Qualcomm Adreno on Windows ARM64 intermittently fails CreateGraphicsPipelines with
+    // VK_ERROR_UNKNOWN for linked GPL pipelines (stageCount==0, composed of pre-built libraries).
+    // Treat the failure as non-fatal: the wrapped pipeline keeps a NULL real handle, and the
+    // capture is allowed to open. Draw calls that bind it will misbehave, but the rest of the UI
+    // remains usable - far better than refusing to open the capture at all.
+    if(createInfo.stageCount == 0)
+    {
+      RDCWARN(
+          "Tolerating linked GPL pipeline create failure on ARM64 - replay will continue with a "
+          "NULL pipeline handle for this resource.");
+      return ResultCode::Succeeded;
+    }
+#endif
+
     RETURN_ERROR_RESULT(ResultCode::APIReplayFailed,
                         "Failed creating graphics pipeline, VkResult: %s", ToStr(ret).c_str());
   }
@@ -744,14 +763,14 @@ bool WrappedVulkan::Serialise_vkCreateGraphicsPipelines(
     VkRenderPass origRP = CreateInfo.renderPass;
     uint64_t createFlags = GetPipelineCreateFlags(&CreateInfo);
     // if we have pipeline executable properties, capture the data - but only
-    // for full executable pipelines, not partial pipeline libraries (GPL).
-    // Adreno on Windows ARM64 has been observed returning VK_ERROR_UNKNOWN
-    // when these flags are set on a non-shader GPL library (vertex input +
-    // fragment output interface combo with stages=0). Per the spec, querying
-    // executable properties on a library that hasn't been linked into a
-    // complete pipeline is meaningless anyway, so just skip.
+    // for full executable pipelines that actually have shader stages. Skip:
+    //  - GPL libraries (LIBRARY_BIT set) - their executables aren't queryable
+    //    until linked.
+    //  - Linked-from-libraries pipelines with no own stages (stageCount==0) -
+    //    Adreno on Windows ARM64 returns VK_ERROR_UNKNOWN if CAPTURE_* flags
+    //    are set on a pipeline that has no shaders of its own.
     if(GetExtensions(NULL).ext_KHR_pipeline_executable_properties &&
-       !(createFlags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR))
+       !(createFlags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR) && CreateInfo.stageCount > 0)
     {
       createFlags |= (VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR |
                       VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR);
