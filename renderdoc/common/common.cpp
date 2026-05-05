@@ -314,7 +314,14 @@ void rdclog_enableoutput()
 void rdclog_closelog()
 {
   log_output_enabled = false;
-  FileIO::logfile_close(logfileHandle, *logfile);
+  // Normally the log file is deleted on close (passing the filename triggers the
+  // delete-if-not-otherwise-locked path). Setting RENDERDOC_KEEP_LOGS=1 in the
+  // environment skips the delete so the file stays around for post-mortem inspection.
+  rdcstr deleteName = *logfile;
+  rdcstr keep = Process::GetEnvVariable("RENDERDOC_KEEP_LOGS");
+  if(!keep.empty() && keep[0] != '0')
+    deleteName = rdcstr();
+  FileIO::logfile_close(logfileHandle, deleteName);
 }
 
 void rdclog_flush()
