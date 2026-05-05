@@ -6265,11 +6265,19 @@ void VulkanReplay::InitPostVSBuffers(uint32_t eventId, VulkanRenderState state)
 
   if(m_pDriver->GetDriverInfo().QualcommBrokenPostVS())
   {
-    VulkanPostVSData &ret = m_PostVS.Data[eventId];
-    ret.gsout.status = ret.vsout.status =
-        "Post-VS data fetch is disabled on Qualcomm Adreno (Windows ARM64): the synthesised "
-        "compute shader hangs the GPU.";
-    return;
+    // Allow overriding the quirk for diagnosis - lets us run the dispatch under validation /
+    // GPU-AV / aftermath without reverting the workaround.
+    rdcstr force = Process::GetEnvVariable("RENDERDOC_FORCE_POSTVS");
+    if(force.empty() || force[0] == '0')
+    {
+      VulkanPostVSData &ret = m_PostVS.Data[eventId];
+      ret.gsout.status = ret.vsout.status =
+          "Post-VS data fetch is disabled on Qualcomm Adreno (Windows ARM64): the synthesised "
+          "compute shader hangs the GPU. Set RENDERDOC_FORCE_POSTVS=1 to override.";
+      return;
+    }
+    RDCWARN("RENDERDOC_FORCE_POSTVS set - bypassing QualcommBrokenPostVS workaround for event %u",
+            eventId);
   }
 
   // we handle out-of-memory errors while processing postvs, don't treat it as a fatal error
