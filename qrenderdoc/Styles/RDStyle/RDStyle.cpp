@@ -222,6 +222,21 @@ void RDStyle::polishPalette(QPalette &pal) const
 
   pal.setColor(QPalette::HighlightedText, Qt::white);
 
+  // PlaceholderText was added as an explicit palette role in Qt 5.12+. If we don't set it
+  // here, Qt6's default is opaque black, which is unreadable on the dark scheme's dark base
+  // colour. Use a desaturated/dimmed version of the regular text colour so the placeholder
+  // sits readably on the input background while still distinguishing itself from real text.
+  {
+    QColor placeholder = text;
+    placeholder.getHsv(&h, &s, &v);
+    if(m_Scheme == Dark)
+      placeholder.setHsv(h, 0, qMax(0, v - 64));
+    else
+      placeholder.setHsv(h, 0, qMin(255, v + 64));
+    pal.setColor(QPalette::PlaceholderText, placeholder);
+    pal.setColor(QPalette::Disabled, QPalette::PlaceholderText, placeholder);
+  }
+
   // links are based on the highlight colour
   QColor link = m_Scheme == Light ? highlight.darker(125) : highlight.lighter(105);
   pal.setColor(QPalette::Link, link);
