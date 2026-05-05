@@ -264,20 +264,31 @@ static HKEY GetImplicitLayersKey(bool writeable, bool wow6432)
   return key;
 }
 
-bool ProcessImplicitLayersKey(HKEY key, const rdcstr &path, rdcarray<rdcstr> *otherJSONs,
-                              bool deleteOthers)
+// Returns true iff every path in `paths` is currently registered. When deleteOthers is
+// true, any other "*renderdoc.json" registry entries that aren't in `paths` are removed
+// from the registry. The list form is needed because we register both a native and an
+// ARM64EC sibling JSON in the same hive, and a single-path "delete everything else"
+// pass would clobber its own sibling registration.
+static bool ProcessImplicitLayersKey_Multi(HKEY key, const rdcarray<rdcstr> &paths,
+                                           rdcarray<rdcstr> *otherJSONs, bool deleteOthers)
 {
-  bool thisRegistered = false;
+  rdcarray<rdcwstr> myJSONs;
+  rdcarray<bool> seen;
+  myJSONs.reserve(paths.size());
+  seen.resize(paths.size());
+  for(const rdcstr &p : paths)
+  {
+    rdcwstr w = StringFormat::UTF82Wide(p);
+    for(size_t i = 0; i < w.length(); i++)
+      w[i] = towlower(w[i]);
+    myJSONs.push_back(w);
+  }
 
   wchar_t name[1025] = {};
   DWORD nameSize = 1024;
   DWORD idx = 0;
 
   LONG ret = RegEnumValueW(key, idx++, name, &nameSize, NULL, NULL, NULL, NULL);
-
-  rdcwstr myJSON = StringFormat::UTF82Wide(path);
-  for(size_t i = 0; i < myJSON.length(); i++)
-    myJSON[i] = towlower(myJSON[i]);
 
   rdcwstr VulkanLayerJSONFilename = StringFormat::UTF82Wide(VulkanLayerJSONBasename + ".json");
 
@@ -289,11 +300,18 @@ bool ProcessImplicitLayersKey(HKEY key, const rdcstr &path, rdcarray<rdcstr> *ot
     for(DWORD i = 0; i <= nameSize && name[i]; i++)
       name[i] = towlower(name[i]);
 
-    if(wcscmp(name, myJSON.c_str()) == 0)
+    bool matchedOurs = false;
+    for(size_t i = 0; i < myJSONs.size(); i++)
     {
-      thisRegistered = true;
+      if(wcscmp(name, myJSONs[i].c_str()) == 0)
+      {
+        seen[i] = true;
+        matchedOurs = true;
+        break;
+      }
     }
-    else if(wcsstr(name, VulkanLayerJSONFilename.c_str()) != NULL)
+
+    if(!matchedOurs && wcsstr(name, VulkanLayerJSONFilename.c_str()) != NULL)
     {
       if(otherJSONs)
         otherJSONs->push_back(utf8name);
@@ -306,7 +324,20 @@ bool ProcessImplicitLayersKey(HKEY key, const rdcstr &path, rdcarray<rdcstr> *ot
     ret = RegEnumValueW(key, idx++, name, &nameSize, NULL, NULL, NULL, NULL);
   }
 
+  bool thisRegistered = !seen.empty();
+  for(bool s : seen)
+    thisRegistered &= s;
+
   return thisRegistered;
+}
+
+// Single-path overload preserved for the existing call shape.
+bool ProcessImplicitLayersKey(HKEY key, const rdcstr &path, rdcarray<rdcstr> *otherJSONs,
+                              bool deleteOthers)
+{
+  rdcarray<rdcstr> paths;
+  paths.push_back(path);
+  return ProcessImplicitLayersKey_Multi(key, paths, otherJSONs, deleteOthers);
 }
 
 bool VulkanReplay::CheckVulkanLayer(VulkanLayerFlags &flags, rdcarray<rdcstr> &myJSONs,
@@ -341,13 +372,14 @@ bool VulkanReplay::CheckVulkanLayer(VulkanLayerFlags &flags, rdcarray<rdcstr> &m
     return true;
   }
 
-  bool thisRegistered = ProcessImplicitLayersKey(key, normalPath, &otherJSONs, false);
-
-  // Both ARM64 and ARM64EC layers live in the same 64-bit ImplicitLayers hive. If we
-  // expect to register a sibling ARM64EC JSON, it must also be present already for
-  // 'thisRegistered' to be true overall.
+  // Pass both the native and the ARM64EC sibling (when applicable) in one call so the
+  // "everything else is foreign" enumeration knows about both of our entries.
+  rdcarray<rdcstr> ourPaths;
+  ourPaths.push_back(normalPath);
   if(!ecPath.empty())
-    thisRegistered &= ProcessImplicitLayersKey(key, ecPath, &otherJSONs, false);
+    ourPaths.push_back(ecPath);
+
+  bool thisRegistered = ProcessImplicitLayersKey_Multi(key, ourPaths, &otherJSONs, false);
 
   RegCloseKey(key);
 
@@ -394,23 +426,36 @@ void VulkanReplay::InstallVulkanLayer(bool systemLevel)
   if(key)
   {
     rdcstr path = GetJSONPath(false);
-
-    // this function will delete all non-matching renderdoc.json values, and return true if our own
-    // is registered
-    bool thisRegistered = ProcessImplicitLayersKey(key, path, NULL, true);
-
-    if(!thisRegistered)
-      RegSetValueExW(key, StringFormat::UTF82Wide(path).c_str(), 0, REG_DWORD, (const BYTE *)&zero,
-                     sizeof(zero));
-
-    // Also register the ARM64EC sibling layer JSON, if one is present, so x64-emulated
-    // victim processes can pick up the capture layer with the matching ARM64EC DLL.
     rdcstr ecPath = GetARM64ECSiblingJSONPath(path);
+
+    rdcarray<rdcstr> ourPaths;
+    ourPaths.push_back(path);
     if(!ecPath.empty())
+      ourPaths.push_back(ecPath);
+
+    // Single pass: delete every foreign renderdoc.json and report whether each of our
+    // entries is already present. Avoids a second-call clobber of the first registration.
+    rdcarray<bool> alreadyRegistered;
+    alreadyRegistered.resize(ourPaths.size());
     {
-      bool ecRegistered = ProcessImplicitLayersKey(key, ecPath, NULL, true);
-      if(!ecRegistered)
-        RegSetValueExW(key, StringFormat::UTF82Wide(ecPath).c_str(), 0, REG_DWORD,
+      // Re-enumerate to fill alreadyRegistered without doing the delete work twice.
+      // (ProcessImplicitLayersKey_Multi only returns the AND across all of ours; we want
+      // per-path "is this one in?" to decide which still need RegSetValueExW.)
+      for(size_t i = 0; i < ourPaths.size(); i++)
+      {
+        rdcarray<rdcstr> singleton;
+        singleton.push_back(ourPaths[i]);
+        alreadyRegistered[i] = ProcessImplicitLayersKey_Multi(key, singleton, NULL, false);
+      }
+
+      // Now do the actual delete-foreign sweep with our complete list.
+      ProcessImplicitLayersKey_Multi(key, ourPaths, NULL, true);
+    }
+
+    for(size_t i = 0; i < ourPaths.size(); i++)
+    {
+      if(!alreadyRegistered[i])
+        RegSetValueExW(key, StringFormat::UTF82Wide(ourPaths[i]).c_str(), 0, REG_DWORD,
                        (const BYTE *)&zero, sizeof(zero));
     }
 
