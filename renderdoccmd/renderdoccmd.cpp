@@ -589,6 +589,8 @@ private:
   uint32_t width = 0;
   uint32_t height = 0;
   uint32_t loops = 0;
+  uint32_t event_id = 0;
+  bool event_specified = false;
 
 public:
   ReplayCommand() : Command() {}
@@ -602,6 +604,12 @@ public:
     parser.add<std::string>("remote-host", 0,
                             "Instead of replaying locally, replay on this host over the network.",
                             false);
+    parser.add<uint32_t>("event", 'e',
+                         "Replay up to and including this event ID, then exit. Useful for "
+                         "non-interactive testing of replay-up-to-event paths (the same path the "
+                         "qrenderdoc Event Browser triggers when you click an event). "
+                         "0 = don't seek (just open the capture).",
+                         false, 0);
   }
   virtual const char *Description()
   {
@@ -632,6 +640,8 @@ public:
     width = parser.get<uint32_t>("width");
     height = parser.get<uint32_t>("height");
     loops = parser.get<uint32_t>("loops");
+    event_id = parser.get<uint32_t>("event");
+    event_specified = parser.exist("event");
 
     return true;
   }
@@ -696,9 +706,71 @@ public:
 
       if(result.OK())
       {
-        DisplayRendererPreview(renderer, width, height, loops);
+        if(event_specified)
+        {
+          // Drive the same code path the Event Browser uses when the user
+          // clicks an event: seek the replay to a specific event ID and
+          // report back. This is mostly a debugging aid - if the seek
+          // triggers a device-lost or other fatal at replay time, the
+          // failure surfaces here as a non-zero exit and stderr message
+          // rather than only inside the qrenderdoc UI.
+          std::cout << "Seeking to event " << event_id << "..." << std::endl;
+          renderer->SetFrameEvent(event_id, true);
 
-        renderer->Shutdown();
+          ResultDetails fatal = renderer->GetFatalErrorStatus();
+          if(!fatal.OK())
+          {
+            std::cerr << "Replay reported a fatal error after seeking to event " << event_id
+                      << ": " << fatal.Message() << std::endl;
+            renderer->Shutdown();
+            return 1;
+          }
+          std::cout << "Seek OK; fetching pipeline state..." << std::endl;
+
+          // Mirror what qrenderdoc does after SetFrameEvent: fetch each per-API
+          // pipeline state and the unified PipeState. These calls drive replay
+          // bookkeeping that has historically tripped device-lost on ARM64.
+          (void)renderer->GetD3D11PipelineState();
+          (void)renderer->GetD3D12PipelineState();
+          (void)renderer->GetGLPipelineState();
+          (void)renderer->GetVulkanPipelineState();
+          (void)renderer->GetPipelineState();
+
+          fatal = renderer->GetFatalErrorStatus();
+          if(!fatal.OK())
+          {
+            std::cerr << "Replay reported a fatal error after fetching pipeline state at event "
+                      << event_id << ": " << fatal.Message() << std::endl;
+            renderer->Shutdown();
+            return 1;
+          }
+
+          // Mirror the texture viewer's post-event refresh: read every texture
+          // back. This drives the internal copy + cmd-buffer submission path
+          // that the qrenderdoc texture viewer's thumbnail/preview triggers.
+          const rdcarray<TextureDescription> &textures = renderer->GetTextures();
+          std::cout << "Reading " << textures.size() << " texture(s)..." << std::endl;
+          for(const TextureDescription &tex : textures)
+          {
+            bytebuf data = renderer->GetTextureData(tex.resourceId, Subresource());
+            (void)data;
+            fatal = renderer->GetFatalErrorStatus();
+            if(!fatal.OK())
+            {
+              std::cerr << "Replay reported a fatal error after reading a texture at event "
+                        << event_id << ": " << fatal.Message() << std::endl;
+              renderer->Shutdown();
+              return 1;
+            }
+          }
+          std::cout << "Successfully replayed up to event " << event_id << "." << std::endl;
+          renderer->Shutdown();
+        }
+        else
+        {
+          DisplayRendererPreview(renderer, width, height, loops);
+          renderer->Shutdown();
+        }
       }
       else
       {
