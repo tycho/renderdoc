@@ -713,6 +713,11 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
 {
   const VkDevDispatchTable *vt = ObjDisp(m_Device);
 
+  // diagnostic: when RENDERDOC_DEBUG_OVERLAY is set, log pipeline / framebuffer / viewport state
+  // for the wireframe / drawcall paths so we can debug coordinate / layout mismatches without
+  // having to attach a debugger.
+  const bool s_overlayDebug = !Process::GetEnvVariable("RENDERDOC_DEBUG_OVERLAY").empty();
+
   RenderOutputSubresource sub = GetRenderOutputSubresource(texid);
 
   if(sub.slice == ~0U)
@@ -1166,6 +1171,44 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
 
       m_pDriver->GetShaderCache()->MakeGraphicsPipelineInfo(pipeCreateInfo,
                                                             prevstate.graphics.pipeline);
+
+      if(s_overlayDebug)
+      {
+        const VulkanCreationInfo::Pipeline &origPipe =
+            m_pDriver->m_CreationInfo.m_Pipeline[prevstate.graphics.pipeline];
+        RDCLOG(
+            "RenderOverlay debug: overlay=%u event=%u texid=%s extent=%ux%u samples=%u",
+            (uint32_t)overlay, eventId, ToStr(texid).c_str(), iminfo.extent.width,
+            iminfo.extent.height, (uint32_t)iminfo.samples);
+        RDCLOG(
+            "  origPipe: id=%s gpl-libs=%zu vertLayout=%s fragLayout=%s ownLayout=%s flags=0x%x",
+            ToStr(prevstate.graphics.pipeline).c_str(),
+            (size_t)origPipe.parentLibraries.size(), ToStr(origPipe.vertLayout).c_str(),
+            ToStr(origPipe.fragLayout).c_str(), ToStr(origPipe.ownLayout).c_str(),
+            (uint32_t)origPipe.flags);
+        RDCLOG("  rebuilt: layout=%p stageCount=%u", (void *)pipeCreateInfo.layout,
+               (uint32_t)pipeCreateInfo.stageCount);
+        if(pipeCreateInfo.pMultisampleState)
+          RDCLOG("  rebuilt MSAA: rasterizationSamples=%u",
+                 (uint32_t)pipeCreateInfo.pMultisampleState->rasterizationSamples);
+        if(pipeCreateInfo.pViewportState && pipeCreateInfo.pViewportState->pViewports)
+        {
+          const VkViewport &v = pipeCreateInfo.pViewportState->pViewports[0];
+          RDCLOG("  rebuilt VP[0]: x=%.2f y=%.2f w=%.2f h=%.2f minD=%.3f maxD=%.3f", v.x, v.y,
+                 v.width, v.height, v.minDepth, v.maxDepth);
+        }
+        if(!state.views.empty())
+        {
+          const VkViewport &v = state.views[0];
+          RDCLOG("  state VP[0]:   x=%.2f y=%.2f w=%.2f h=%.2f", v.x, v.y, v.width, v.height);
+        }
+        RDCLOG("  state push constants size: %u bytes", state.pushConstSize);
+        RDCLOG("  state.dynamicRendering.active=%u", state.dynamicRendering.active);
+        if(state.dynamicRendering.active)
+          RDCLOG("  dynRender renderArea=%dx%d at (%d,%d)", state.renderArea.extent.width,
+                 state.renderArea.extent.height, state.renderArea.offset.x,
+                 state.renderArea.offset.y);
+      }
 
       // make patched shader object
       VkShaderEXT shad = VK_NULL_HANDLE;
