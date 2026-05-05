@@ -95,6 +95,18 @@ if(WIN32)
     add_definitions(-DVK_USE_PLATFORM_WIN32_KHR)
 
     set(VULKAN_LAYER_NAME "VK_LAYER_${RDOC_BASE_NAME_UPPER}_Capture")
+    # The ARM64EC sibling install (used to capture x64-emulated victims on Windows
+    # ARM64) sits alongside the native ARM64 layer manifest in the same registry
+    # hive. The Vulkan loader dedupes implicit layers by name and keeps the first
+    # one it finds, so if both manifests share VK_LAYER_RENDERDOC_Capture the loader
+    # picks one (whichever it enumerated first) and discards the other. That manifests
+    # as ERROR_BAD_EXE_FORMAT (193) when an x64-emulated process tries to load the
+    # ARM64 view's DLL after the EC view's manifest got dropped. Give the ARM64EC
+    # build's manifest a unique layer name so both register independently and the
+    # loader picks each one for the matching architecture.
+    if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64EC" OR CMAKE_VS_PLATFORM_NAME STREQUAL "ARM64EC")
+        set(VULKAN_LAYER_NAME "${VULKAN_LAYER_NAME}_arm64ec")
+    endif()
     set(VULKAN_ENABLE_VAR "ENABLE_VULKAN_${RDOC_BASE_NAME_UPPER}_CAPTURE")
 
     # The Vulkan loader resolves library_path relative to the JSON's own
