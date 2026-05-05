@@ -27,7 +27,19 @@ DEF="${ROOT}/renderdoc/os/win32/comexport.def"
 # Locate MSVC + SDK by looking under VS18 Enterprise. Adjust the version stem
 # if you upgrade.
 MSVC_BASE="/c/Program Files/Microsoft Visual Studio/18/Enterprise/VC/Tools/MSVC"
-MSVC_VER="$(ls "${MSVC_BASE}" | sort -V | tail -1)"
+# Pick the highest MSVC version that has a usable arm64 link.exe; some entries
+# under MSVC/ are empty placeholders.
+MSVC_VER=""
+for v in $(ls "${MSVC_BASE}" | sort -V -r); do
+  if [ -f "${MSVC_BASE}/${v}/bin/Hostarm64/arm64/link.exe" ]; then
+    MSVC_VER="$v"
+    break
+  fi
+done
+if [ -z "${MSVC_VER}" ]; then
+  echo "No usable MSVC ARM64 toolchain found under ${MSVC_BASE}" >&2
+  exit 1
+fi
 LINK="${MSVC_BASE}/${MSVC_VER}/bin/Hostarm64/arm64/link.exe"
 LIB_EXE="${MSVC_BASE}/${MSVC_VER}/bin/Hostarm64/arm64/lib.exe"
 SDK_BASE="/c/Program Files (x86)/Windows Kits/10/Lib"
