@@ -3790,7 +3790,18 @@ bool WrappedVulkan::Serialise_vkCmdBindPipeline(SerialiserType &ser, VkCommandBu
     }
 
     if(commandBuffer != VK_NULL_HANDLE)
-      ObjDisp(commandBuffer)->CmdBindPipeline(Unwrap(commandBuffer), pipelineBindPoint, Unwrap(pipeline));
+    {
+      VkPipeline unwrapped = Unwrap(pipeline);
+      // Skip the bind if the live pipeline handle is NULL. We can end up here when
+      // DeferredPipelineCompile tolerated a CreateGraphicsPipelines failure (e.g. ARM64 Adreno
+      // returning VK_ERROR_UNKNOWN intermittently for linked GPL pipelines) and stored a NULL
+      // real handle. Calling vkCmdBindPipeline with VK_NULL_HANDLE is a spec violation that
+      // some drivers tolerate silently and others - notably Adreno through the validation
+      // layer chain - dereference and crash on. Better to skip the call: subsequent draws on
+      // this pipeline will misbehave anyway, but the rest of the replay can still proceed.
+      if(unwrapped != VK_NULL_HANDLE)
+        ObjDisp(commandBuffer)->CmdBindPipeline(Unwrap(commandBuffer), pipelineBindPoint, unwrapped);
+    }
   }
 
   return true;
