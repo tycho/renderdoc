@@ -23,6 +23,9 @@
  ******************************************************************************/
 
 #include <stdio.h>
+#if defined(_MSC_VER) && defined(_DEBUG)
+#include <crtdbg.h>
+#endif
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDir>
@@ -182,6 +185,22 @@ void hideOption(QCommandLineOption &opt)
 
 int main(int argc, char *argv[])
 {
+#if defined(_MSC_VER) && defined(_DEBUG)
+  // Route debug CRT reports (assert / heap corruption / invalid params) to
+  // the debugger output and stderr instead of a modal MessageBox. The modal
+  // dialog pumps Win32 messages, which lets queued Qt signal/slot deliveries
+  // run while a widget destructor is mid-flight. That dispatches into a
+  // partially-destroyed object, fails Qt's assertObjectType<T>, and turns
+  // a debug-heap warning into a hard crash. With reports going to the debug
+  // output the underlying heap issue is still visible without the cascading
+  // failure.
+  for(int reportType : {_CRT_WARN, _CRT_ERROR, _CRT_ASSERT})
+  {
+    _CrtSetReportMode(reportType, _CRTDBG_MODE_DEBUG | _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(reportType, _CRTDBG_FILE_STDERR);
+  }
+#endif
+
   // call this as the very first thing - no-op on other platforms, but on linux it means
   // XInitThreads will be called allowing driver access to xlib on multiple threads.
   // Qt6: AA_X11InitThreads removed
