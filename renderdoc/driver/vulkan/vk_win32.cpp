@@ -155,6 +155,27 @@ void *LoadVulkanLibrary()
   return Process::LoadModule("vulkan-1.dll");
 }
 
+// Produces the path to the ARM64EC sibling layer JSON if one is present. The native ARM64
+// build sits next to renderdoc.dll + renderdoc.json; we ship the ARM64EC build alongside in
+// an arm64ec/ subdirectory (renderdoc.dll + renderdoc.json there). Returns an empty string
+// when no sibling exists, so callers can skip the registration silently. ARM64EC processes
+// are normal x64 processes from the loader's view, so both registrations live in the same
+// 64-bit ImplicitLayers registry hive (no Wow6432Node split is involved).
+static rdcstr GetARM64ECSiblingJSONPath(const rdcstr &mainJsonPath)
+{
+#if defined(_M_ARM64) && !defined(_M_ARM64EC)
+  rdcstr dir = get_dirname(mainJsonPath);
+  rdcstr name = get_basename(mainJsonPath);
+  rdcstr ecPath = dir + "\\arm64ec\\" + name;
+
+  if(FileIO::exists(ecPath.c_str()))
+    return ecPath;
+#else
+  (void)mainJsonPath;
+#endif
+  return rdcstr();
+}
+
 rdcstr GetJSONPath(bool wow6432)
 {
   rdcstr libPath;
@@ -294,6 +315,12 @@ bool VulkanReplay::CheckVulkanLayer(VulkanLayerFlags &flags, rdcarray<rdcstr> &m
   rdcstr normalPath = GetJSONPath(false);
   myJSONs.push_back(normalPath);
 
+  // On a native ARM64 build, register an additional sibling ARM64EC layer JSON if we ship
+  // one alongside, so x64-emulated victim processes can also pick up the capture layer.
+  rdcstr ecPath = GetARM64ECSiblingJSONPath(normalPath);
+  if(!ecPath.empty())
+    myJSONs.push_back(ecPath);
+
 // On ARM64 we don't ship an x86 secondary DLL (and Win11 ARM64 emulates x86
 // only via XTAJIT32 anyway, which is out of scope for phase 1). Only the
 // native x64 build wants to register a Wow6432Node sibling.
@@ -315,6 +342,12 @@ bool VulkanReplay::CheckVulkanLayer(VulkanLayerFlags &flags, rdcarray<rdcstr> &m
   }
 
   bool thisRegistered = ProcessImplicitLayersKey(key, normalPath, &otherJSONs, false);
+
+  // Both ARM64 and ARM64EC layers live in the same 64-bit ImplicitLayers hive. If we
+  // expect to register a sibling ARM64EC JSON, it must also be present already for
+  // 'thisRegistered' to be true overall.
+  if(!ecPath.empty())
+    thisRegistered &= ProcessImplicitLayersKey(key, ecPath, &otherJSONs, false);
 
   RegCloseKey(key);
 
@@ -369,6 +402,17 @@ void VulkanReplay::InstallVulkanLayer(bool systemLevel)
     if(!thisRegistered)
       RegSetValueExW(key, StringFormat::UTF82Wide(path).c_str(), 0, REG_DWORD, (const BYTE *)&zero,
                      sizeof(zero));
+
+    // Also register the ARM64EC sibling layer JSON, if one is present, so x64-emulated
+    // victim processes can pick up the capture layer with the matching ARM64EC DLL.
+    rdcstr ecPath = GetARM64ECSiblingJSONPath(path);
+    if(!ecPath.empty())
+    {
+      bool ecRegistered = ProcessImplicitLayersKey(key, ecPath, NULL, true);
+      if(!ecRegistered)
+        RegSetValueExW(key, StringFormat::UTF82Wide(ecPath).c_str(), 0, REG_DWORD,
+                       (const BYTE *)&zero, sizeof(zero));
+    }
 
     RegCloseKey(key);
   }
