@@ -793,22 +793,10 @@ rdcpair<RDResult, uint32_t> Process::InjectIntoProcess(uint32_t pid,
 
   // IMAGE_FILE_MACHINE_AMD64 means we have an x64 PE that will run under emulation on ARM64;
   // farm off to the ARM64EC sibling so we inject the matching ARM64EC renderdoc.dll.
-  // Override: when RENDERDOC_NO_EC_FARMOFF is set in the environment, skip the farm-off and
-  // inject our own renderdoc.dll directly. Useful when renderdoc.dll is already an ARM64X
-  // PE - the OS loader will pick the right view based on the calling process arch.
   if(victimMachine == IMAGE_FILE_MACHINE_AMD64)
   {
-    rdcstr noFarmOff = Process::GetEnvVariable("RENDERDOC_NO_EC_FARMOFF");
-    if(noFarmOff.empty() || noFarmOff[0] == '0')
-    {
-      capArm64ECSibling = true;
-      capalt = true;
-    }
-    else
-    {
-      RDCLOG("RENDERDOC_NO_EC_FARMOFF set - injecting renderdoc.dll directly into x64 victim "
-             "(requires the DLL to be ARM64X)");
-    }
+    capArm64ECSibling = true;
+    capalt = true;
   }
   else if(victimMachine != IMAGE_FILE_MACHINE_UNKNOWN &&
           victimMachine != IMAGE_FILE_MACHINE_ARM64)
