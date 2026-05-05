@@ -722,12 +722,16 @@ rdcpair<RDResult, uint32_t> Process::InjectIntoProcess(uint32_t pid,
   // if the target process is 'wow64' that means it's 32-bit.
   capalt = (isWow64 == TRUE);
 
-#if defined(_M_ARM64) || defined(_M_ARM64EC)
+  // Tracks whether we detected an x64-emulated victim on a native ARM64 host. When set,
+  // capalt is true and we farm off to the ARM64EC sibling renderdoccmd (see below).
+  bool capArm64ECSibling = false;
+
+#if defined(_M_ARM64) && !defined(_M_ARM64EC)
   // On Windows ARM64, IsWow64Process only flags x86-on-x64 wow64 (which doesn't
-  // apply to us). To detect a victim that's actually running under x64 emulation
-  // on ARM64, use IsWow64Process2 (Win10 1709+) and check processMachine.
-  // For phase 1 we only support same-arch ARM64->ARM64 capture, so we treat any
-  // mismatched-arch victim as incompatible rather than trying to farm off.
+  // apply to us). Use IsWow64Process2 (Win10 1709+) to distinguish native ARM64
+  // victims from x64-emulated ones: native ARM64 we inject directly, x64-emulated
+  // we farm off to an ARM64EC build of renderdoccmd that injects the matching
+  // ARM64EC renderdoc.dll.
   using PFN_IsWow64Process2 = BOOL(WINAPI *)(HANDLE, USHORT *, USHORT *);
   HMODULE k32 = GetModuleHandleW(L"kernel32.dll");
   PFN_IsWow64Process2 pIsWow64Process2 =
@@ -739,19 +743,24 @@ rdcpair<RDResult, uint32_t> Process::InjectIntoProcess(uint32_t pid,
     if(pIsWow64Process2(hProcess, &processMachine, &nativeMachine))
     {
       // processMachine == IMAGE_FILE_MACHINE_UNKNOWN means "running natively"
-      // on the host arch. Anything else means emulated. We're an ARM64 build so
-      // we can only inject into native ARM64 victims in phase 1; reject the
-      // x64-emulated case explicitly with a clear error rather than crashing
-      // later trying to inject the wrong-arch DLL.
-      if(processMachine != IMAGE_FILE_MACHINE_UNKNOWN &&
-         processMachine != IMAGE_FILE_MACHINE_ARM64)
+      // on the host arch. IMAGE_FILE_MACHINE_AMD64 (0x8664) means an x64 PE
+      // running under ARM64 emulation; that's the case we farm off to ARM64EC.
+      if(processMachine == IMAGE_FILE_MACHINE_AMD64)
       {
+        capArm64ECSibling = true;
+        capalt = true;
+      }
+      else if(processMachine != IMAGE_FILE_MACHINE_UNKNOWN &&
+              processMachine != IMAGE_FILE_MACHINE_ARM64)
+      {
+        // Some other emulated arch (x86 via XTAJIT32, etc.) - we don't currently
+        // ship a sibling for those. Fail clearly rather than crash.
         CloseHandle(hProcess);
         RDResult result;
         SET_ERROR_RESULT(result, ResultCode::IncompatibleProcess,
                          "Cannot capture an emulated process (machine 0x%04x) from the native "
-                         "ARM64 build of RenderDoc. Phase 1 supports ARM64-on-ARM64 only; "
-                         "x64-emulated victims need an ARM64X build (planned phase 3).",
+                         "ARM64 build of RenderDoc. Only ARM64 and x64-emulated victims are "
+                         "supported; x86-emulated capture is out of scope.",
                          (unsigned)processMachine);
         return {result, 0};
       }
@@ -763,44 +772,61 @@ rdcpair<RDResult, uint32_t> Process::InjectIntoProcess(uint32_t pid,
   if(capalt)
   {
 #if ENABLED(RDOC_X64)
+
+#if defined(_M_ARM64) && !defined(_M_ARM64EC)
+    // ARM64 host capturing an x64-emulated victim: farm off to the ARM64EC sibling.
+    // It lives in arm64ec/ next to the main renderdoccmd, mirroring how x64 builds
+    // ship an x86/ sibling. The ARM64EC build links against ARM64EC renderdoc.dll
+    // which is compatible with x64-emulated processes.
+    if(capArm64ECSibling)
+    {
+      wchar_t *slash = wcsrchr(renderdocPath, L'\\');
+      if(slash)
+        *slash = 0;
+      wcscat_s(renderdocPath, L"\\arm64ec\\renderdoccmd.exe");
+    }
+    else
+#endif
     // if it looks like we're in the development environment, look for the alternate bitness in the
     // corresponding folder
-    const wchar_t *devLocation = wcsstr(renderdocPathLower, L"\\x64\\development\\");
-    if(devLocation)
     {
-      size_t idx = devLocation - renderdocPathLower;
-
-      renderdocPath[idx] = 0;
-
-      wcscat_s(renderdocPath, L"\\Win32\\Development\\renderdoccmd.exe");
-    }
-
-    if(!devLocation)
-    {
-      devLocation = wcsstr(renderdocPathLower, L"\\x64\\release\\");
-
+      const wchar_t *devLocation = wcsstr(renderdocPathLower, L"\\x64\\development\\");
       if(devLocation)
       {
         size_t idx = devLocation - renderdocPathLower;
 
         renderdocPath[idx] = 0;
 
-        wcscat_s(renderdocPath, L"\\Win32\\Release\\renderdoccmd.exe");
+        wcscat_s(renderdocPath, L"\\Win32\\Development\\renderdoccmd.exe");
       }
-    }
 
-    if(!devLocation)
-    {
-      // look in a subfolder for x86.
+      if(!devLocation)
+      {
+        devLocation = wcsstr(renderdocPathLower, L"\\x64\\release\\");
 
-      // remove the filename from the path
-      wchar_t *slash = wcsrchr(renderdocPath, L'\\');
+        if(devLocation)
+        {
+          size_t idx = devLocation - renderdocPathLower;
 
-      if(slash)
-        *slash = 0;
+          renderdocPath[idx] = 0;
 
-      // append path
-      wcscat_s(renderdocPath, L"\\x86\\renderdoccmd.exe");
+          wcscat_s(renderdocPath, L"\\Win32\\Release\\renderdoccmd.exe");
+        }
+      }
+
+      if(!devLocation)
+      {
+        // look in a subfolder for x86.
+
+        // remove the filename from the path
+        wchar_t *slash = wcsrchr(renderdocPath, L'\\');
+
+        if(slash)
+          *slash = 0;
+
+        // append path
+        wcscat_s(renderdocPath, L"\\x86\\renderdoccmd.exe");
+      }
     }
 #else
     // if it looks like we're in the development environment, look for the alternate bitness in the
