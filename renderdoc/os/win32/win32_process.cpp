@@ -736,35 +736,81 @@ rdcpair<RDResult, uint32_t> Process::InjectIntoProcess(uint32_t pid,
   HMODULE k32 = GetModuleHandleW(L"kernel32.dll");
   PFN_IsWow64Process2 pIsWow64Process2 =
       k32 ? (PFN_IsWow64Process2)GetProcAddress(k32, "IsWow64Process2") : NULL;
+  // Determine the victim's arch. Prefer IsWow64Process2 - but on a process that's still
+  // CREATE_SUSPENDED on Windows 11 ARM64 it can return processMachine=UNKNOWN even for an
+  // x64 image because the emulator thread hasn't been set up yet, so as a fallback read the
+  // PE header from disk via the process image path. The PE machine field is unambiguous.
+  USHORT victimMachine = IMAGE_FILE_MACHINE_UNKNOWN;
+
   if(pIsWow64Process2)
   {
     USHORT processMachine = IMAGE_FILE_MACHINE_UNKNOWN;
     USHORT nativeMachine = IMAGE_FILE_MACHINE_UNKNOWN;
     if(pIsWow64Process2(hProcess, &processMachine, &nativeMachine))
     {
-      // processMachine == IMAGE_FILE_MACHINE_UNKNOWN means "running natively"
-      // on the host arch. IMAGE_FILE_MACHINE_AMD64 (0x8664) means an x64 PE
-      // running under ARM64 emulation; that's the case we farm off to ARM64EC.
-      if(processMachine == IMAGE_FILE_MACHINE_AMD64)
+      RDCLOG("InjectIntoProcess pid=%u: IsWow64Process2 processMachine=0x%04x nativeMachine=0x%04x",
+             pid, (unsigned)processMachine, (unsigned)nativeMachine);
+      victimMachine = processMachine;
+    }
+  }
+
+  if(victimMachine == IMAGE_FILE_MACHINE_UNKNOWN)
+  {
+    // Suspended-process fallback: read the EXE's PE header to learn the real machine type.
+    wchar_t imagePath[MAX_PATH] = {};
+    DWORD pathSize = MAX_PATH;
+    if(QueryFullProcessImageNameW(hProcess, 0, imagePath, &pathSize) && pathSize > 0)
+    {
+      HANDLE hFile = CreateFileW(imagePath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+      if(hFile != INVALID_HANDLE_VALUE)
       {
-        capArm64ECSibling = true;
-        capalt = true;
-      }
-      else if(processMachine != IMAGE_FILE_MACHINE_UNKNOWN &&
-              processMachine != IMAGE_FILE_MACHINE_ARM64)
-      {
-        // Some other emulated arch (x86 via XTAJIT32, etc.) - we don't currently
-        // ship a sibling for those. Fail clearly rather than crash.
-        CloseHandle(hProcess);
-        RDResult result;
-        SET_ERROR_RESULT(result, ResultCode::IncompatibleProcess,
-                         "Cannot capture an emulated process (machine 0x%04x) from the native "
-                         "ARM64 build of RenderDoc. Only ARM64 and x64-emulated victims are "
-                         "supported; x86-emulated capture is out of scope.",
-                         (unsigned)processMachine);
-        return {result, 0};
+        IMAGE_DOS_HEADER dos = {};
+        DWORD readBytes = 0;
+        if(ReadFile(hFile, &dos, sizeof(dos), &readBytes, NULL) && readBytes == sizeof(dos) &&
+           dos.e_magic == IMAGE_DOS_SIGNATURE)
+        {
+          if(SetFilePointer(hFile, dos.e_lfanew, NULL, FILE_BEGIN) != INVALID_SET_FILE_POINTER)
+          {
+            DWORD signature = 0;
+            IMAGE_FILE_HEADER fileHeader = {};
+            if(ReadFile(hFile, &signature, sizeof(signature), &readBytes, NULL) &&
+               readBytes == sizeof(signature) && signature == IMAGE_NT_SIGNATURE &&
+               ReadFile(hFile, &fileHeader, sizeof(fileHeader), &readBytes, NULL) &&
+               readBytes == sizeof(fileHeader))
+            {
+              victimMachine = fileHeader.Machine;
+              RDCLOG(
+                  "InjectIntoProcess pid=%u: PE header fallback - image %ls machine=0x%04x",
+                  pid, imagePath, (unsigned)victimMachine);
+            }
+          }
+        }
+        CloseHandle(hFile);
       }
     }
+  }
+
+  // IMAGE_FILE_MACHINE_AMD64 means we have an x64 PE that will run under emulation on ARM64;
+  // farm off to the ARM64EC sibling so we inject the matching ARM64EC renderdoc.dll.
+  if(victimMachine == IMAGE_FILE_MACHINE_AMD64)
+  {
+    capArm64ECSibling = true;
+    capalt = true;
+  }
+  else if(victimMachine != IMAGE_FILE_MACHINE_UNKNOWN &&
+          victimMachine != IMAGE_FILE_MACHINE_ARM64)
+  {
+    // Some other emulated arch (x86 via XTAJIT32, etc.) - we don't currently
+    // ship a sibling for those. Fail clearly rather than crash.
+    CloseHandle(hProcess);
+    RDResult result;
+    SET_ERROR_RESULT(result, ResultCode::IncompatibleProcess,
+                     "Cannot capture an emulated process (machine 0x%04x) from the native "
+                     "ARM64 build of RenderDoc. Only ARM64 and x64-emulated victims are "
+                     "supported; x86-emulated capture is out of scope.",
+                     (unsigned)victimMachine);
+    return {result, 0};
   }
 #endif
 #endif
