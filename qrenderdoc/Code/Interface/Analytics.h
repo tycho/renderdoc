@@ -50,7 +50,18 @@
 // Once the report is sent, the database is reset and begins the next period.
 
 // this is the root switch that can turn off *all* analytics code globally
+//
+// Phase 1 Windows ARM64 port: anonymous usage analytics get posted to
+// https://renderdoc.org/analytics, which is Baldur Karlsson's server. He has
+// explicitly declined to support Windows ARM, so any analytics from an ARM64
+// build are pure noise on his side and may also skew his stats with our
+// fork-specific code paths. Hard-disable on ARM64 / ARM64EC so we never
+// phone home from this build.
+#if defined(_M_ARM64) || defined(_M_ARM64EC) || defined(__aarch64__)
+#define RENDERDOC_ANALYTICS_ENABLE 0
+#else
 #define RENDERDOC_ANALYTICS_ENABLE 1
+#endif
 
 // we don't want any of this to be accessible to script, only code.
 #if !defined(SWIG) && !defined(SWIG_GENERATED)
