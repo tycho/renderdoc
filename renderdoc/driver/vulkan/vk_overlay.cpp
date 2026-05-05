@@ -1377,6 +1377,30 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
       // don't use custom resolve
       RemoveNextStruct(&pipeCreateInfo, VK_STRUCTURE_TYPE_CUSTOM_RESOLVE_CREATE_INFO_EXT);
 
+      // The original pipeline may have been rendering with VK_EXT_multisampled_render_to_single_sampled
+      // (rasterizationSamples=N writing into a samples=1 image, with the MS state living in the
+      // VkPipelineRenderingCreateInfo / VkMultisampledRenderToSingleSampledInfoEXT we just stripped).
+      // The overlay framebuffer is a regular renderpass with sample count = m_Overlay.Samples
+      // (matching the texid). If we leave the pipeline's MultisampleState at the original
+      // rasterizationSamples, we get a sample-count mismatch between pipeline and FB. Some drivers
+      // reject this; others (notably Adreno on Windows ARM64) silently rasterize with skewed sample
+      // positions, producing geometrically distorted output - the wireframe lands in the wrong
+      // place because vertex coverage is computed against the wrong sample grid.
+      // Force the MS state to match the overlay framebuffer's actual sample count.
+      VkPipelineMultisampleStateCreateInfo *overlayMsaa =
+          (VkPipelineMultisampleStateCreateInfo *)pipeCreateInfo.pMultisampleState;
+      if(overlayMsaa && overlayMsaa->rasterizationSamples != m_Overlay.Samples)
+      {
+        overlayMsaa->rasterizationSamples = m_Overlay.Samples;
+        // sampleShadingEnable + minSampleShading are only meaningful at >1 samples; harmless to
+        // leave untouched but explicitly disable to avoid driver disagreement at samples=1.
+        if(m_Overlay.Samples == VK_SAMPLE_COUNT_1_BIT)
+        {
+          overlayMsaa->sampleShadingEnable = VK_FALSE;
+          overlayMsaa->minSampleShading = 0.0f;
+        }
+      }
+
       if(!state.graphics.shaderObject)
       {
         bool found = false;
