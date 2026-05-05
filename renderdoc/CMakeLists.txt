@@ -332,6 +332,31 @@ if(WIN32)
         os/win32/win32_threading.cpp
         data/resource.h
         data/renderdoc.rc)
+
+    # D3D11 capture support: pull every .cpp/.h under driver/d3d11, driver/dxgi, and the
+    # DXBC shader-bytecode parser into the main rdoc translation unit. The historical
+    # .vcxproj layout had each as a separate static library; here we just append to the
+    # rdoc source list so we don't have to wire up per-driver CMakeLists/object-library
+    # plumbing for this fork. D3D12 is intentionally excluded for now - phase 4 starts
+    # with D3D11 only and D3D12 is a follow-up once D3D11 is verified end-to-end on ARM64.
+    if(ENABLE_D3D11)
+        file(GLOB d3d11_sources
+            driver/d3d11/*.cpp
+            driver/d3d11/*.h)
+        file(GLOB dxgi_sources
+            driver/dxgi/*.cpp
+            driver/dxgi/*.h)
+        # DXBC bytecode parser - shared between D3D11 and (eventually) D3D12, so glob from
+        # one place. Headers in dxbc/official/ are vendored Microsoft SDK fragments.
+        file(GLOB dxbc_sources
+            driver/shaders/dxbc/*.cpp
+            driver/shaders/dxbc/*.h
+            driver/shaders/dxbc/official/*.h)
+        file(GLOB dxil_sources
+            driver/shaders/dxil/*.cpp
+            driver/shaders/dxil/*.h)
+        list(APPEND sources ${d3d11_sources} ${dxgi_sources} ${dxbc_sources} ${dxil_sources})
+    endif()
 elseif(ANDROID)
     list(APPEND sources
         data/embedded_files.h
@@ -623,7 +648,7 @@ add_subdirectory(driver/ihv/amd)
 list(APPEND renderdoc_objects $<TARGET_OBJECTS:rdoc_amd>)
 
 # pull in the intel folder for GL perf queries
-if(ENABLE_GL OR ENABLE_GLES)
+if(ENABLE_GL OR ENABLE_GLES OR ENABLE_D3D11)
     add_subdirectory(driver/ihv/intel)
     list(APPEND renderdoc_objects $<TARGET_OBJECTS:rdoc_intel>)
 endif()
@@ -635,7 +660,7 @@ if(ENABLE_GL OR ENABLE_GLES)
 endif()
 
 # pull in the NVIDIA folder
-if(ENABLE_GL OR ENABLE_GLES OR ENABLE_VULKAN)
+if(ENABLE_GL OR ENABLE_GLES OR ENABLE_VULKAN OR ENABLE_D3D11)
     add_subdirectory(driver/ihv/nv)
     list(APPEND renderdoc_objects $<TARGET_OBJECTS:rdoc_nv>)
 endif()

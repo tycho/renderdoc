@@ -37,6 +37,21 @@
 #include "official/ags/amd_ags.h"
 #include "ags_wrapper.h"
 
+#if !defined(RENDERDOC_SUPPORT_D3D12)
+struct D3D12DevConfiguration;
+struct ID3DDevice;
+HRESULT CreateD3D12_Internal(
+    std::function<HRESULT(IUnknown *, D3D_FEATURE_LEVEL, REFIID, void **)>,
+    D3D12DevConfiguration *, IUnknown *, D3D_FEATURE_LEVEL, REFIID, void **)
+{
+  return E_NOTIMPL;
+}
+ID3DDevice *GetD3D12DeviceIfAlloc(IUnknown *)
+{
+  return NULL;
+}
+#endif
+
 RDOC_CONFIG(
     bool, AMD_ags_AllowUnknownExtensions, false,
     "Allow extensions that we may not support. This could crash or cause crashes on replay.");

@@ -15,6 +15,13 @@ else()
     list(APPEND sources amd_isa_posix.cpp)
 endif()
 
+if(ENABLE_D3D11)
+    list(APPEND sources
+        ags_wrapper.cpp
+        ags_wrapper.h
+        amd_hooks.cpp)
+endif()
+
 set(include_dirs ${RDOC_INCLUDES})
 
 add_library(rdoc_amd OBJECT ${sources})

@@ -26,6 +26,7 @@
 
 #include <stdint.h>
 #include <windows.h>
+#include <unknwn.h>
 
 enum class NvShaderOpcode : uint32_t
 {

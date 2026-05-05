@@ -17,6 +17,17 @@ if(NOT ANDROID AND NOT APPLE)
     if(ENABLE_VULKAN)
         set(sources_vulkan nv_vk_counters.cpp)
     endif()
+
+    if(ENABLE_D3D11)
+        list(APPEND sources
+            nv_counters.cpp
+            nv_counters.h
+            nv_d3d11_counters.cpp
+            nv_d3d11_counters.h
+            nvapi_wrapper.cpp
+            nvapi_wrapper.h
+            nvapi_hooks.cpp)
+    endif()
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")

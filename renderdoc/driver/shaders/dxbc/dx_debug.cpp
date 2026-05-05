@@ -30,6 +30,18 @@
 #include "dxbc_container.h"
 #include "dxbc_debug.h"
 
+#if !defined(RENDERDOC_SUPPORT_D3D12)
+namespace DXILDebug
+{
+void GetInterpolationModeForInputParams(const rdcarray<SigParameter> &stageInputSig,
+                                        const DXIL::Program *program,
+                                        rdcarray<DXBC::InterpolationMode> &interpModes)
+{
+  interpModes.resize(stageInputSig.size());
+}
+}
+#endif
+
 namespace DXDebug
 {
 void GatherInputDataForInitialValues(const DXBC::DXBCContainer *dxbc, InputFetcher &fetcher,

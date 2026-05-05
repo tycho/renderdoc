@@ -200,6 +200,8 @@ endif()
 
 project(RenderDoc CXX C)
 
+option(ENABLE_D3D11 "Enable D3D11 driver (Windows only)" ON)
+
 option(ENABLE_GL "Enable GL driver" ON)
 option(ENABLE_GLES "Enable GL ES driver" ON)
 option(ENABLE_EGL "Enable EGL" ON)
@@ -350,6 +352,17 @@ endif()
 
 if(ENABLE_VULKAN)
     add_definitions(-DRENDERDOC_SUPPORT_VULKAN)
+endif()
+
+# D3D11 is Windows-only by definition; force OFF on every other platform regardless of
+# what the user asked for, so the option is just "do you want it on Windows" without
+# spurious "no D3D11 here" errors elsewhere.
+if(NOT WIN32)
+    set(ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
+endif()
+
+if(ENABLE_D3D11)
+    add_definitions(-DRENDERDOC_SUPPORT_D3D11)
 endif()
 
 if(ENABLE_METAL)
@@ -590,6 +603,10 @@ endif()
 
 if(ENABLE_VULKAN)
     message(STATUS "  - Vulkan")
+endif()
+
+if(ENABLE_D3D11)
+    message(STATUS "  - D3D11")
 endif()
 
 if(ENABLE_METAL)
