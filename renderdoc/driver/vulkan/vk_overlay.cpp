@@ -2993,6 +2993,18 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
       // BeginRenderPassAndApplyState and a clear. If it's just the begin, we
       // just play including it, do the clear, then we won't replay anything
       // in the loop below
+      if(s_overlayDebug)
+      {
+        rdcstr ev_list;
+        for(uint32_t e : events)
+          ev_list += StringFormat::Fmt("%u ", e);
+        const ActionDescription *act0 = m_pDriver->GetAction(events[0]);
+        RDCLOG("ClearBefore%s: events=[%s] events[0].flags=0x%x BeginPass=%u",
+               overlay == DebugOverlay::ClearBeforePass ? "Pass" : "Draw", ev_list.c_str(),
+               act0 ? (uint32_t)act0->flags : 0xFFFFFFFFu,
+               act0 && (act0->flags & ActionFlags::BeginPass) ? 1u : 0u);
+      }
+
       if(overlay == DebugOverlay::ClearBeforePass)
       {
         const ActionDescription *action = m_pDriver->GetAction(events[0]);
@@ -3000,13 +3012,25 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
         {
           if(events.size() == 1)
           {
+            if(s_overlayDebug)
+              RDCLOG("ClearBeforePass: replay 0..%u Full", events[0]);
             m_pDriver->ReplayLog(0, events[0], eReplay_Full);
           }
           else
           {
             startEvent = 1;
+            if(s_overlayDebug)
+              RDCLOG("ClearBeforePass: replay 0..%u WithoutDraw (setup for events[1]=%u)",
+                     events[1], events[1]);
             m_pDriver->ReplayLog(0, events[1], eReplay_WithoutDraw);
           }
+        }
+        else if(s_overlayDebug)
+        {
+          RDCLOG(
+              "ClearBeforePass: events[0]=%u is NOT marked BeginPass - SKIPPING pre-loop "
+              "WithoutDraw setup. Loop draws will run with no prior state established.",
+              events[0]);
         }
       }
       else
@@ -3093,10 +3117,17 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, FloatVector clearCol, D
 
       for(size_t i = startEvent; i < events.size(); i++)
       {
+        if(s_overlayDebug)
+          RDCLOG("ClearBefore loop i=%zu: OnlyDraw event=%u", i, events[i]);
         m_pDriver->ReplayLog(events[i], events[i], eReplay_OnlyDraw);
 
         if(overlay == DebugOverlay::ClearBeforePass && i + 1 < events.size())
+        {
+          if(s_overlayDebug)
+            RDCLOG("ClearBefore loop i=%zu: WithoutDraw %u..%u (setup for events[%zu]=%u)", i,
+                   events[i] + 1, events[i + 1], i + 1, events[i + 1]);
           m_pDriver->ReplayLog(events[i] + 1, events[i + 1], eReplay_WithoutDraw);
+        }
       }
 
       cmd = m_pDriver->GetNextCmd();
