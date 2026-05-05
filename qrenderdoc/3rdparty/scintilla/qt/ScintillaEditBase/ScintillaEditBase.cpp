@@ -727,7 +727,12 @@ void ScintillaEditBase::notifyParent(SCNotification scn)
 				emit linesAdded(added ? 1 : -1);
 			}
 
-			const QByteArray bytes = QByteArray::fromRawData(scn.text, scn.length);
+			// SC_MOD_CHANGESTYLE (and some other modifications) deliver scn.text == nullptr
+			// with scn.length set to the affected range. Qt6's QArrayDataPointer ctor
+			// asserts (rawData || !length), so guard against the null-with-length case
+			// rather than handing it directly to QByteArray::fromRawData.
+			const QByteArray bytes = scn.text ? QByteArray::fromRawData(scn.text, scn.length)
+			                                  : QByteArray();
 			emit modified(scn.modificationType, scn.position, scn.length,
 			              scn.linesAdded, bytes, scn.line,
 			              scn.foldLevelNow, scn.foldLevelPrev);
