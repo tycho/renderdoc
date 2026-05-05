@@ -75,6 +75,57 @@ static uint32_t MeshOutputOutputSpecConstant = MeshOutputIBufferSpecConstant + 1
 // 2 = vbuffers
 static const uint32_t MeshOutputReservedBindings = 3;
 
+// When RENDERDOC_DUMP_POSTVS_SPV is set in the environment, dump the synthesised post-VS /
+// post-tess+geom / post-mesh / task-feedback SPIR-V to that directory so we can run it through
+// spirv-val / spirv-dis / spirv-cross. The value is treated as a directory path; if it equals "1"
+// or any non-path-like value, defaults to %TEMP%\renderdoc-postvs-spv. Files are named
+// postvs_<tag>_<index>.spv. Each call appends a process-unique counter so multiple dumps in one
+// run don't collide.
+static void DumpSpvIfRequested(const char *tag, const rdcarray<uint32_t> &spv)
+{
+  static rdcstr s_dumpDir;
+  static bool s_initialised = false;
+  static uint32_t s_counter = 0;
+
+  if(!s_initialised)
+  {
+    s_initialised = true;
+    rdcstr env = Process::GetEnvVariable("RENDERDOC_DUMP_POSTVS_SPV");
+    if(!env.empty() && env != "0")
+    {
+      // treat anything that doesn't look like a path as a request to use the default dir
+      if(env == "1" || env.find('\\') < 0)
+      {
+        rdcstr tmp = FileIO::GetTempFolderFilename();
+        s_dumpDir = tmp + "renderdoc-postvs-spv";
+      }
+      else
+      {
+        s_dumpDir = env;
+      }
+      FileIO::CreateParentDirectory(s_dumpDir + "/_");
+      RDCLOG("Post-VS SPIR-V dumps will be written to: %s", s_dumpDir.c_str());
+    }
+  }
+
+  if(s_dumpDir.empty())
+    return;
+
+  uint32_t idx = ++s_counter;
+  rdcstr path = StringFormat::Fmt("%s/postvs_%s_%04u.spv", s_dumpDir.c_str(), tag, idx);
+  FILE *f = FileIO::fopen(path.c_str(), FileIO::WriteBinary);
+  if(f)
+  {
+    FileIO::fwrite(spv.data(), sizeof(uint32_t), spv.size(), f);
+    FileIO::fclose(f);
+    RDCLOG("Dumped post-VS SPIR-V (%s, %zu words) -> %s", tag, spv.size(), path.c_str());
+  }
+  else
+  {
+    RDCWARN("Failed to open %s for post-VS SPIR-V dump", path.c_str());
+  }
+}
+
 static void ConvertToMeshOutputCompute(const ShaderReflection &refl, const SPIRVPatchData &patchData,
                                        const rdcstr &entryName, BufferStorageMode storageMode,
                                        rdcarray<VertexAttributeInfo> vertexAttrInfo,
@@ -3268,6 +3319,7 @@ void VulkanReplay::FetchMeshOut(uint32_t eventId, VulkanRenderState &state)
     VkShaderModule taskModule = VK_NULL_HANDLE;
     if(!state.graphics.shaderObject)
     {
+      DumpSpvIfRequested("mesh_task", taskSpirv);
       vkr = m_pDriver->vkCreateShaderModule(dev, &moduleCreateInfo, NULL, &taskModule);
       CHECK_VKR(m_pDriver, vkr);
     }
@@ -3673,6 +3725,7 @@ void VulkanReplay::FetchMeshOut(uint32_t eventId, VulkanRenderState &state)
   VkShaderModule module = VK_NULL_HANDLE, taskFeedModule = VK_NULL_HANDLE;
   if(!state.graphics.shaderObject)
   {
+    DumpSpvIfRequested("mesh_main", modSpirv);
     vkr = m_pDriver->vkCreateShaderModule(dev, &moduleCreateInfo, NULL, &module);
     CHECK_VKR(m_pDriver, vkr);
   }
@@ -3755,6 +3808,7 @@ void VulkanReplay::FetchMeshOut(uint32_t eventId, VulkanRenderState &state)
       moduleCreateInfo.pCode = modSpirv.data();
       moduleCreateInfo.codeSize = modSpirv.byteSize();
 
+      DumpSpvIfRequested("task_feedback", modSpirv);
       vkr = m_pDriver->vkCreateShaderModule(dev, &moduleCreateInfo, NULL, &taskFeedModule);
       CHECK_VKR(m_pDriver, vkr);
     }
@@ -5376,6 +5430,7 @@ void VulkanReplay::FetchVSOut(uint32_t eventId, VulkanRenderState &state)
   };
 
   VkShaderModule module;
+  DumpSpvIfRequested("vsout", modSpirv);
   vkr = m_pDriver->vkCreateShaderModule(dev, &moduleCreateInfo, NULL, &module);
   CHECK_VKR(m_pDriver, vkr);
 
@@ -5827,6 +5882,7 @@ void VulkanReplay::FetchTessGSOut(uint32_t eventId, VulkanRenderState &state)
   VkDevice dev = m_Device;
 
   VkShaderModule module;
+  DumpSpvIfRequested("tessgsout", modSpirv);
   vkr = m_pDriver->vkCreateShaderModule(dev, &moduleCreateInfo, NULL, &module);
   CHECK_VKR(m_pDriver, vkr);
 
@@ -6269,8 +6325,6 @@ void VulkanReplay::InitPostVSBuffers(uint32_t eventId, VulkanRenderState state)
 
   if(m_pDriver->GetDriverInfo().QualcommBrokenPostVS())
   {
-    // Allow overriding the quirk for diagnosis - lets us run the dispatch under validation /
-    // GPU-AV / aftermath without reverting the workaround.
     rdcstr force = Process::GetEnvVariable("RENDERDOC_FORCE_POSTVS");
     if(force.empty() || force[0] == '0')
     {
